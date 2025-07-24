@@ -32,8 +32,9 @@ class MockServer {
       api: {}
     };
     
-    // Track registered API routes to detect duplicates
-    this.registeredApiRoutes = new Map(); // key: 'METHOD /path', value: config name
+    // Track registered API routes and mappings
+    this.registeredApiRoutes = new Map(); // key: 'METHOD /path', value: array of mappings
+    this.apiMappings = []; // All API mappings in order
     
     // Setup event listeners
     this.setupEventListeners();
@@ -217,7 +218,17 @@ class MockServer {
           config.mappings.forEach(mapping => {
             const method = mapping.request.method || 'ANY';
             const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
-            endpoints.push(`${method} ${path}`);
+            
+            // Include scenario information if present
+            let endpoint = `${method} ${path}`;
+            if (mapping.request.headers?.['X-Mock-Scenario']?.equals) {
+              endpoint += ` [scenario: ${mapping.request.headers['X-Mock-Scenario'].equals}]`;
+            }
+            if (mapping.id) {
+              endpoint += ` (${mapping.id})`;
+            }
+            
+            endpoints.push(endpoint);
           });
         }
         const key = config._location || config.name;
@@ -276,11 +287,17 @@ class MockServer {
       }
     }
     
-    // Add built-in endpoints
+    // Sort API mappings by priority after all are registered
+    this.sortApiMappingsByPriority();
+    
+    // Add built-in endpoints first (they have highest priority)
     this.registerBuiltInEndpoints(server);
     
+    // Register a catch-all route for API requests
+    this.registerCatchAllRoute(server);
+    
     // Add default handler for unmatched routes
-    server.setNotFoundHandler((request, reply) => {
+    server.setNotFoundHandler(async (request, reply) => {
       this.logger.warn({
         method: request.method,
         url: request.url,
@@ -332,7 +349,8 @@ class MockServer {
             ignore: 'pid,hostname'
           }
         }
-      }
+      },
+      exposeHeadRoutes: false  // Disable automatic HEAD route generation
     });
 
     // Register WebSocket plugin
@@ -379,65 +397,17 @@ class MockServer {
           return;
         }
         
-        // Check for duplicate route
-        const routeKey = `${method} ${path}`;
-        const existingConfig = this.registeredApiRoutes.get(routeKey);
-        
-        if (existingConfig) {
-          const errorMsg = `Path conflict: ${routeKey} already registered by ${existingConfig}`;
-          this.logger.error({
-            config: config.name,
-            method,
-            path,
-            existingConfig,
-            mappingId: mapping.id || index
-          }, errorMsg);
-          
-          failedMappings.push(errorMsg);
-          return;
-        }
-
-        // Create route handler
-        const handler = async (request, reply) => {
-          // Check if request matches all criteria
-          const matches = await this.apiRequestMatcher.matches(request, mapping.request);
-          
-          if (matches) {
-            this.logger.debug({
-              method: request.method,
-              path: request.url,
-              mappingId: mapping.id || index
-            }, 'API request matched');
-            
-            // Process response
-            await this.apiResponseHandler.sendResponse(reply, mapping.response, { request });
-          } else {
-            // Continue to next handler
-            return;
-          }
+        // Store mapping with config info and priority
+        const enrichedMapping = {
+          ...mapping,
+          _configName: config.name,
+          _configLocation: config._location || config.name,
+          _mappingIndex: index,
+          _priority: this.calculateMappingPriority(mapping)
         };
-
-        // Register route
-        try {
-          const actualPath = mapping.request.urlPathPattern ? 
-            this.convertPatternToRoute(mapping.request.urlPathPattern) : path;
-          
-          server[method.toLowerCase()](actualPath, handler);
-          
-          // Track successful registration
-          this.registeredApiRoutes.set(routeKey, config.name);
-          
-        } catch (error) {
-          const errorMsg = `Failed to register ${routeKey}: ${error.message}`;
-          this.logger.error({
-            error: error.message,
-            method,
-            path,
-            config: config.name
-          }, errorMsg);
-          
-          failedMappings.push(errorMsg);
-        }
+        
+        // Add to global mappings list
+        this.apiMappings.push(enrichedMapping);
       }
     });
     
@@ -455,9 +425,205 @@ class MockServer {
    * Convert URL pattern to Fastify route format
    */
   convertPatternToRoute(pattern) {
+    // Convert common regex patterns to Fastify wildcard format
+    // Examples:
+    // /ripio/.* -> /ripio/*
+    // /ripio/users.* -> /ripio/users*
+    // /ripio/ticker/([A-Z]+_[A-Z]+) -> /ripio/ticker/:param
+    
+    // First, replace .* at the end with *
+    let route = pattern.replace(/\.\*$/, '*');
+    
+    // Replace .* in the middle with *
+    route = route.replace(/\.\*/g, '*');
+    
     // Convert regex groups to Fastify parameters
-    // Example: /ripio/ticker/([A-Z]+_[A-Z]+) -> /ripio/ticker/:pair
-    return pattern.replace(/\([^)]+\)/g, ':param');
+    route = route.replace(/\([^)]+\)/g, ':param');
+    
+    return route;
+  }
+
+  /**
+   * Calculate priority for a mapping based on path specificity
+   * Lower number = higher priority
+   */
+  calculateMappingPriority(mapping) {
+    const path = mapping.request.urlPath || mapping.request.urlPathPattern;
+    
+    // Priority 1: Exact paths (urlPath)
+    if (mapping.request.urlPath) {
+      return 1;
+    }
+    
+    // Priority 2: Pattern paths with specific segments
+    if (mapping.request.urlPathPattern) {
+      // Count wildcards and regex patterns
+      const wildcardCount = (path.match(/\.\*/g) || []).length;
+      const regexGroupCount = (path.match(/\([^)]+\)/g) || []).length;
+      const pathSegments = path.split('/').length;
+      
+      // More specific paths (more segments, fewer wildcards) get higher priority
+      // Base priority 100 for patterns, plus penalties for wildcards
+      return 100 + (wildcardCount * 100) + (regexGroupCount * 10) - pathSegments;
+    }
+    
+    // Default lowest priority
+    return 1000;
+  }
+
+  /**
+   * Sort API mappings by priority
+   */
+  sortApiMappingsByPriority() {
+    this.apiMappings.sort((a, b) => {
+      const priorityA = this.calculateMappingPriority(a);
+      const priorityB = this.calculateMappingPriority(b);
+      
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      
+      // If same priority, maintain original order
+      return a._mappingIndex - b._mappingIndex;
+    });
+    
+    this.logger.debug({
+      mappingCount: this.apiMappings.length,
+      priorities: this.apiMappings.map(m => ({
+        path: m.request.urlPath || m.request.urlPathPattern,
+        priority: this.calculateMappingPriority(m)
+      }))
+    }, 'API mappings sorted by priority');
+  }
+
+  /**
+   * Try to match request against all API mappings
+   */
+  async matchApiRequest(request, reply) {
+    const method = request.method.toUpperCase();
+    const urlPath = request.url.split('?')[0];
+    
+    // Try each mapping in priority order
+    for (const mapping of this.apiMappings) {
+      const mappingMethod = (mapping.request.method || 'GET').toUpperCase();
+      
+      // Skip if method doesn't match
+      if (mappingMethod !== method) {
+        continue;
+      }
+      
+      // Check if path matches
+      let pathMatches = false;
+      if (mapping.request.urlPath) {
+        pathMatches = urlPath === mapping.request.urlPath;
+      } else if (mapping.request.urlPathPattern) {
+        const pattern = new RegExp(mapping.request.urlPathPattern);
+        pathMatches = pattern.test(urlPath);
+      }
+      
+      if (!pathMatches) {
+        continue;
+      }
+      
+      // Check all criteria
+      const matches = await this.apiRequestMatcher.matches(request, mapping.request);
+      
+      if (matches) {
+        this.logger.debug({
+          method: request.method,
+          path: request.url,
+          matchedPath: mapping.request.urlPath || mapping.request.urlPathPattern,
+          priority: this.calculateMappingPriority(mapping),
+          mappingId: mapping.id || mapping._mappingIndex,
+          configName: mapping._configName,
+          scenario: mapping.request.headers?.['X-Mock-Scenario']?.equals || 
+                   mapping.request.headers?.['X-Mock-Scenario']?.matches
+        }, 'API request matched with priority');
+        
+        // Check for dynamic scenario patterns in header
+        let responseConfig = { ...mapping.response };
+        const scenarioHeader = request.headers['x-mock-scenario'];
+        
+        if (scenarioHeader) {
+          // Handle timeout-[seconds] pattern
+          if (scenarioHeader.startsWith('timeout-')) {
+            const timeoutMatch = scenarioHeader.match(/^timeout-(\d+)$/);
+            if (timeoutMatch) {
+              const timeoutSeconds = parseInt(timeoutMatch[1]);
+              if (timeoutSeconds >= 0 && timeoutSeconds <= 60) {
+                responseConfig.delay = timeoutSeconds * 1000;
+                this.logger.debug({
+                  scenario: scenarioHeader,
+                  delayMs: responseConfig.delay
+                }, 'Dynamic timeout applied from scenario header');
+              }
+            }
+          }
+          
+          // Handle slow-[milliseconds] pattern
+          else if (scenarioHeader.startsWith('slow-')) {
+            const slowMatch = scenarioHeader.match(/^slow-(\d+)$/);
+            if (slowMatch) {
+              const delayMs = parseInt(slowMatch[1]);
+              if (delayMs >= 0 && delayMs <= 60000) { // Max 60 seconds
+                responseConfig.delay = delayMs;
+                this.logger.debug({
+                  scenario: scenarioHeader,
+                  delayMs: responseConfig.delay
+                }, 'Dynamic slow response applied from scenario header');
+              }
+            }
+          }
+          
+          // Handle error-[code] pattern
+          else if (scenarioHeader.startsWith('error-')) {
+            const errorMatch = scenarioHeader.match(/^error-(\d{3})$/);
+            if (errorMatch) {
+              const errorCode = parseInt(errorMatch[1]);
+              if (errorCode >= 400 && errorCode <= 599) {
+                responseConfig.status = errorCode;
+                // Provide a default error body if none exists
+                if (!responseConfig.jsonBody && !responseConfig.body) {
+                  responseConfig.jsonBody = {
+                    error: `HTTP ${errorCode}`,
+                    message: this.getDefaultErrorMessage(errorCode),
+                    timestamp: "{{timestamp}}"
+                  };
+                }
+                this.logger.debug({
+                  scenario: scenarioHeader,
+                  statusCode: errorCode
+                }, 'Dynamic error code applied from scenario header');
+              }
+            }
+          }
+        }
+        
+        // Process response
+        await this.apiResponseHandler.sendResponse(reply, responseConfig, { request });
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Register catch-all route for priority-based API matching
+   */
+  registerCatchAllRoute(server) {
+    // Register routes for each HTTP method
+    const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+    
+    methods.forEach(method => {
+      server[method.toLowerCase()]('/*', async (request, reply) => {
+        const matched = await this.matchApiRequest(request, reply);
+        if (!matched) {
+          // Let it fall through to the not found handler
+          reply.callNotFound();
+        }
+      });
+    });
   }
 
   /**
@@ -777,6 +943,55 @@ class MockServer {
     }
 
     return info;
+  }
+
+  /**
+   * Get default error message for HTTP status code
+   */
+  getDefaultErrorMessage(statusCode) {
+    const messages = {
+      400: 'Bad Request',
+      401: 'Unauthorized',
+      402: 'Payment Required',
+      403: 'Forbidden',
+      404: 'Not Found',
+      405: 'Method Not Allowed',
+      406: 'Not Acceptable',
+      407: 'Proxy Authentication Required',
+      408: 'Request Timeout',
+      409: 'Conflict',
+      410: 'Gone',
+      411: 'Length Required',
+      412: 'Precondition Failed',
+      413: 'Payload Too Large',
+      414: 'URI Too Long',
+      415: 'Unsupported Media Type',
+      416: 'Range Not Satisfiable',
+      417: 'Expectation Failed',
+      418: "I'm a teapot",
+      421: 'Misdirected Request',
+      422: 'Unprocessable Entity',
+      423: 'Locked',
+      424: 'Failed Dependency',
+      425: 'Too Early',
+      426: 'Upgrade Required',
+      428: 'Precondition Required',
+      429: 'Too Many Requests',
+      431: 'Request Header Fields Too Large',
+      451: 'Unavailable For Legal Reasons',
+      500: 'Internal Server Error',
+      501: 'Not Implemented',
+      502: 'Bad Gateway',
+      503: 'Service Unavailable',
+      504: 'Gateway Timeout',
+      505: 'HTTP Version Not Supported',
+      506: 'Variant Also Negotiates',
+      507: 'Insufficient Storage',
+      508: 'Loop Detected',
+      510: 'Not Extended',
+      511: 'Network Authentication Required'
+    };
+    return messages[statusCode] || `Error ${statusCode}`;
   }
 
   /**

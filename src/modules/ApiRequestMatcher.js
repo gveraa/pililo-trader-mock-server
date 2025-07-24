@@ -52,6 +52,18 @@ class ApiRequestMatcher {
         for (const [headerName, headerCriteria] of Object.entries(criteria.headers)) {
           const headerValue = request.headers[headerName.toLowerCase()];
           
+          // Handle 'absent' criteria
+          if (headerCriteria.absent === true) {
+            if (headerValue !== undefined) {
+              this.logger.warn({
+                header: headerName,
+                value: headerValue
+              }, 'Header should be absent');
+              return false;
+            }
+            continue;
+          }
+          
           if (!headerValue) {
             this.logger.warn({
               header: headerName
@@ -122,13 +134,23 @@ class ApiRequestMatcher {
    * @returns {boolean} True if value matches criteria
    */
   matchValue(value, criteria) {
+    // Support both 'equals' and 'equalTo' for compatibility
     if (criteria.equals !== undefined) {
       return value === criteria.equals;
+    }
+    
+    if (criteria.equalTo !== undefined) {
+      return value === criteria.equalTo;
     }
 
     if (criteria.matches !== undefined) {
       const pattern = new RegExp(criteria.matches);
       return pattern.test(value);
+    }
+    
+    // Check for 'absent' criteria
+    if (criteria.absent === true) {
+      return value === undefined || value === null;
     }
 
     // If no criteria specified, consider it a match

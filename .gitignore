@@ -4,3 +4,7 @@ dist
 CLAUDE.md
 .claude
 *Zone.Identifier
+
+# Log files
+*.log
+logs/

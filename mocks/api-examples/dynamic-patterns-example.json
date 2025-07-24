@@ -1,0 +1,89 @@
+{
+  "name": "dynamic-patterns-example",
+  "type": "api",
+  "description": "Example of X-Mock-Scenario dynamic patterns",
+  "mappings": [
+    {
+      "id": "user-api-with-scenarios",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/users",
+        "headers": {
+          "X-Mock-Scenario": {
+            "matches": "slow-\\d+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "users": [
+            { "id": 1, "name": "John" },
+            { "id": 2, "name": "Jane" }
+          ],
+          "debug": "Response delayed by X-Mock-Scenario header"
+        }
+      }
+    },
+    {
+      "id": "user-api-timeout",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/users",
+        "headers": {
+          "X-Mock-Scenario": {
+            "matches": "timeout-\\d+"
+          }
+        }
+      },
+      "response": {
+        "status": 408,
+        "jsonBody": {
+          "error": "Request Timeout",
+          "message": "The server timed out waiting for the request"
+        }
+      }
+    },
+    {
+      "id": "user-api-errors",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/users",
+        "headers": {
+          "X-Mock-Scenario": {
+            "matches": "error-\\d{3}"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "note": "Status code will be overridden by scenario header"
+        }
+      }
+    },
+    {
+      "id": "user-api-default",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/users"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "users": [
+            { "id": 1, "name": "John", "email": "john@example.com" },
+            { "id": 2, "name": "Jane", "email": "jane@example.com" }
+          ],
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "name": "dynamic-scenarios-demo",
+  "type": "api",
+  "description": "Demonstrates dynamic scenario patterns: slow-[ms], timeout-[s], error-[code]",
+  "mappings": [
+    {
+      "id": "test-slow-pattern",
+      "request": {
+        "method": "GET",
+        "urlPath": "/test/dynamic",
+        "headers": {
+          "X-Mock-Scenario": {
+            "matches": "slow-\\d+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "message": "Response with dynamic delay (milliseconds)",
+          "note": "Use header X-Mock-Scenario: slow-2000 for 2 second delay"
+        }
+      }
+    },
+    {
+      "id": "test-timeout-pattern",
+      "request": {
+        "method": "GET",
+        "urlPath": "/test/dynamic",
+        "headers": {
+          "X-Mock-Scenario": {
+            "matches": "timeout-\\d+"
+          }
+        }
+      },
+      "response": {
+        "status": 408,
+        "jsonBody": {
+          "error": "Request Timeout",
+          "message": "Dynamic timeout in seconds",
+          "note": "Use header X-Mock-Scenario: timeout-5 for 5 second timeout"
+        }
+      }
+    },
+    {
+      "id": "test-error-pattern",
+      "request": {
+        "method": "GET",
+        "urlPath": "/test/dynamic",
+        "headers": {
+          "X-Mock-Scenario": {
+            "matches": "error-\\d{3}"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "note": "Status will be overridden by header",
+          "example": "Use X-Mock-Scenario: error-404 or error-500"
+        }
+      }
+    },
+    {
+      "id": "test-default",
+      "request": {
+        "method": "GET",
+        "urlPath": "/test/dynamic"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "message": "Default response - no scenario",
+          "availableScenarios": [
+            "slow-[milliseconds] - Delays response by N milliseconds, returns normal status (max 60000ms)",
+            "timeout-[seconds] - Simulates timeout: waits N seconds then returns 408 (max 60s)",
+            "error-[code] - Returns specified HTTP error code immediately (400-599)"
+          ],
+          "examples": [
+            "X-Mock-Scenario: slow-1500 (1.5 second delay)",
+            "X-Mock-Scenario: timeout-10 (10 second timeout)",
+            "X-Mock-Scenario: error-404 (returns 404 Not Found)",
+            "X-Mock-Scenario: error-503 (returns 503 Service Unavailable)"
+          ]
+        }
+      }
+    }
+  ]
+}

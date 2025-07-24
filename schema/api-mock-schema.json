@@ -35,6 +35,44 @@
               "headers": {
                 "type": "object",
                 "description": "Headers to match",
+                "properties": {
+                  "X-Mock-Scenario": {
+                    "type": "object",
+                    "description": "Mock scenario header for testing different behaviors",
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "matches": {
+                            "type": "string",
+                            "description": "Regex pattern for dynamic scenarios",
+                            "enum": [
+                              "timeout-\\d+",
+                              "timeout-\\d{1,2}",
+                              "slow-\\d+",
+                              "slow-\\d{1,5}",
+                              "error-\\d{3}",
+                              "error-4\\d{2}",
+                              "error-5\\d{2}"
+                            ]
+                          }
+                        },
+                        "required": ["matches"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "properties": {
+                          "absent": {
+                            "type": "boolean",
+                            "const": true,
+                            "description": "Match when header is absent"
+                          }
+                        },
+                        "required": ["absent"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
@@ -45,6 +83,14 @@
                     "equals": {
                       "type": "string",
                       "description": "Exact value to match"
+                    },
+                    "equalTo": {
+                      "type": "string",
+                      "description": "Exact value to match (alias for equals)"
+                    },
+                    "absent": {
+                      "type": "boolean",
+                      "description": "Match when header is absent"
                     }
                   }
                 }
