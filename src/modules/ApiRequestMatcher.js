@@ -15,29 +15,33 @@ class ApiRequestMatcher {
     try {
       // Check method
       if (criteria.method && request.method !== criteria.method) {
-        this.logger.debug({
+        this.logger.warn({
           expected: criteria.method,
           actual: request.method
         }, 'Method mismatch');
         return false;
       }
 
-      // Check URL path
-      if (criteria.urlPath && request.url !== criteria.urlPath) {
-        this.logger.debug({
-          expected: criteria.urlPath,
-          actual: request.url
-        }, 'URL path mismatch');
-        return false;
+      // Check URL path (without query string)
+      if (criteria.urlPath) {
+        const urlPath = request.url.split('?')[0];
+        if (urlPath !== criteria.urlPath) {
+          this.logger.warn({
+            expected: criteria.urlPath,
+            actual: urlPath
+          }, 'URL path mismatch');
+          return false;
+        }
       }
 
-      // Check URL pattern
+      // Check URL pattern (without query string)
       if (criteria.urlPathPattern) {
+        const urlPath = request.url.split('?')[0];
         const pattern = new RegExp(criteria.urlPathPattern);
-        if (!pattern.test(request.url)) {
-          this.logger.debug({
+        if (!pattern.test(urlPath)) {
+          this.logger.warn({
             pattern: criteria.urlPathPattern,
-            actual: request.url
+            actual: urlPath
           }, 'URL pattern mismatch');
           return false;
         }
@@ -49,14 +53,14 @@ class ApiRequestMatcher {
           const headerValue = request.headers[headerName.toLowerCase()];
           
           if (!headerValue) {
-            this.logger.debug({
+            this.logger.warn({
               header: headerName
             }, 'Required header missing');
             return false;
           }
 
           if (!this.matchValue(headerValue, headerCriteria)) {
-            this.logger.debug({
+            this.logger.warn({
               header: headerName,
               value: headerValue,
               criteria: headerCriteria
@@ -72,14 +76,14 @@ class ApiRequestMatcher {
           const paramValue = request.query[paramName];
           
           if (!paramValue) {
-            this.logger.debug({
+            this.logger.warn({
               param: paramName
             }, 'Required query parameter missing');
             return false;
           }
 
           if (!this.matchValue(paramValue, paramCriteria)) {
-            this.logger.debug({
+            this.logger.warn({
               param: paramName,
               value: paramValue,
               criteria: paramCriteria
@@ -93,7 +97,7 @@ class ApiRequestMatcher {
       if (criteria.bodyPatterns && request.body) {
         for (const pattern of criteria.bodyPatterns) {
           if (!this.matchBodyPattern(request.body, pattern)) {
-            this.logger.debug({
+            this.logger.warn({
               pattern
             }, 'Body pattern mismatch');
             return false;

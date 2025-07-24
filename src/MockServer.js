@@ -32,6 +32,9 @@ class MockServer {
       api: {}
     };
     
+    // Track registered API routes to detect duplicates
+    this.registeredApiRoutes = new Map(); // key: 'METHOD /path', value: config name
+    
     // Setup event listeners
     this.setupEventListeners();
   }
@@ -138,12 +141,20 @@ class MockServer {
                   if (rule.matcher.type === 'jsonPath') {
                     matcherInfo = `[jsonPath:${rule.matcher.path}=${rule.matcher.value || '*'}]`;
                   } else if (rule.matcher.type === 'contains' || rule.matcher.type === 'exact') {
-                    const value = typeof rule.matcher.value === 'string' ? 
-                      rule.matcher.value.substring(0, 20) : 
-                      JSON.stringify(rule.matcher.value).substring(0, 20);
-                    matcherInfo = `[${rule.matcher.type}:${value}${value.length >= 20 ? '...' : ''}]`;
+                    if (rule.matcher.value !== undefined) {
+                      const value = typeof rule.matcher.value === 'string' ? 
+                        rule.matcher.value.substring(0, 20) : 
+                        JSON.stringify(rule.matcher.value).substring(0, 20);
+                      matcherInfo = `[${rule.matcher.type}:${value}${value.length >= 20 ? '...' : ''}]`;
+                    } else {
+                      matcherInfo = `[${rule.matcher.type}:undefined]`;
+                    }
                   } else if (rule.matcher.type === 'regex') {
-                    matcherInfo = `[regex:${rule.matcher.value.substring(0, 20)}${rule.matcher.value.length > 20 ? '...' : ''}]`;
+                    if (rule.matcher.value !== undefined) {
+                      matcherInfo = `[regex:${rule.matcher.value.substring(0, 20)}${rule.matcher.value.length > 20 ? '...' : ''}]`;
+                    } else {
+                      matcherInfo = `[regex:undefined]`;
+                    }
                   } else {
                     matcherInfo = `[${rule.matcher.type}]`;
                   }
@@ -173,12 +184,20 @@ class MockServer {
               if (rule.matcher.type === 'jsonPath') {
                 matcherInfo = `[jsonPath:${rule.matcher.path}=${rule.matcher.value || '*'}]`;
               } else if (rule.matcher.type === 'contains' || rule.matcher.type === 'exact') {
-                const value = typeof rule.matcher.value === 'string' ? 
-                  rule.matcher.value.substring(0, 20) : 
-                  JSON.stringify(rule.matcher.value).substring(0, 20);
-                matcherInfo = `[${rule.matcher.type}:${value}${value.length >= 20 ? '...' : ''}]`;
+                if (rule.matcher.value !== undefined) {
+                  const value = typeof rule.matcher.value === 'string' ? 
+                    rule.matcher.value.substring(0, 20) : 
+                    JSON.stringify(rule.matcher.value).substring(0, 20);
+                  matcherInfo = `[${rule.matcher.type}:${value}${value.length >= 20 ? '...' : ''}]`;
+                } else {
+                  matcherInfo = `[${rule.matcher.type}:undefined]`;
+                }
               } else if (rule.matcher.type === 'regex') {
-                matcherInfo = `[regex:${rule.matcher.value.substring(0, 20)}${rule.matcher.value.length > 20 ? '...' : ''}]`;
+                if (rule.matcher.value !== undefined) {
+                  matcherInfo = `[regex:${rule.matcher.value.substring(0, 20)}${rule.matcher.value.length > 20 ? '...' : ''}]`;
+                } else {
+                  matcherInfo = `[regex:undefined]`;
+                }
               } else {
                 matcherInfo = `[${rule.matcher.type}]`;
               }
@@ -192,43 +211,17 @@ class MockServer {
           this.loadedMocks.ws[key] = operations;
         }
       } else if (config.type === 'api') {
-        // For merged configs, extract individual file endpoints
-        if (config._mergedConfigs && config._mergedConfigs.length > 0) {
-          // Process each merged config
-          config._mergedConfigs.forEach(mergedPath => {
-            const endpoints = [];
-            
-            // Extract endpoints for this specific merged config
-            if (config.mappings) {
-              config.mappings
-                .filter(mapping => mapping._subdirectory && mapping._originalConfigName && 
-                       `${mapping._subdirectory}/${mapping._originalConfigName}` === mergedPath)
-                .forEach(mapping => {
-                  const method = mapping.request.method || 'ANY';
-                  const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
-                  endpoints.push(`${method} ${path}`);
-                });
-            }
-            
-            if (endpoints.length > 0) {
-              this.loadedMocks.api[mergedPath] = endpoints;
-            }
+        // API configs are not merged - each is loaded individually
+        const endpoints = [];
+        if (config.mappings) {
+          config.mappings.forEach(mapping => {
+            const method = mapping.request.method || 'ANY';
+            const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
+            endpoints.push(`${method} ${path}`);
           });
-        } else {
-          // Single config (not merged)
-          const endpoints = [];
-          if (config.mappings) {
-            config.mappings.forEach(mapping => {
-              const method = mapping.request.method || 'ANY';
-              const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
-              endpoints.push(`${method} ${path}`);
-            });
-          }
-          const key = config._metadata ? 
-            config._metadata.fileName.replace('.json', '') : 
-            config.name;
-          this.loadedMocks.api[key] = endpoints;
         }
+        const key = config._location || config.name;
+        this.loadedMocks.api[key] = endpoints;
       }
     });
   }
@@ -285,6 +278,22 @@ class MockServer {
     
     // Add built-in endpoints
     this.registerBuiltInEndpoints(server);
+    
+    // Add default handler for unmatched routes
+    server.setNotFoundHandler((request, reply) => {
+      this.logger.warn({
+        method: request.method,
+        url: request.url,
+        headers: request.headers
+      }, 'No API mapping matched request');
+      
+      reply.code(404).send({
+        error: 'Not Found',
+        message: 'No mock mapping found for this request',
+        method: request.method,
+        path: request.url
+      });
+    });
     
     // Start the server on fixed port 8080
     await server.listen({ 
@@ -353,10 +362,13 @@ class MockServer {
    */
   registerApiHandlers(server, config) {
     if (!config.mappings) return;
+    
+    // Track failed mappings for this config
+    const failedMappings = [];
 
     config.mappings.forEach((mapping, index) => {
       if (mapping.enabled !== false) { // Default to enabled
-        const method = (mapping.request.method || 'GET').toLowerCase();
+        const method = (mapping.request.method || 'GET').toUpperCase();
         const path = mapping.request.urlPath || mapping.request.urlPathPattern;
         
         if (!path) {
@@ -364,6 +376,24 @@ class MockServer {
             config: config.name,
             mappingIndex: index
           }, 'API mapping missing URL path');
+          return;
+        }
+        
+        // Check for duplicate route
+        const routeKey = `${method} ${path}`;
+        const existingConfig = this.registeredApiRoutes.get(routeKey);
+        
+        if (existingConfig) {
+          const errorMsg = `Path conflict: ${routeKey} already registered by ${existingConfig}`;
+          this.logger.error({
+            config: config.name,
+            method,
+            path,
+            existingConfig,
+            mappingId: mapping.id || index
+          }, errorMsg);
+          
+          failedMappings.push(errorMsg);
           return;
         }
 
@@ -389,25 +419,36 @@ class MockServer {
 
         // Register route
         try {
-          if (mapping.request.urlPathPattern) {
-            // Convert pattern to Fastify route format
-            const routePath = this.convertPatternToRoute(mapping.request.urlPathPattern);
-            server[method](routePath, handler);
-          } else {
-            server[method](path, handler);
-          }
+          const actualPath = mapping.request.urlPathPattern ? 
+            this.convertPatternToRoute(mapping.request.urlPathPattern) : path;
           
-          // Log handled by ConfigurationManager
+          server[method.toLowerCase()](actualPath, handler);
+          
+          // Track successful registration
+          this.registeredApiRoutes.set(routeKey, config.name);
+          
         } catch (error) {
+          const errorMsg = `Failed to register ${routeKey}: ${error.message}`;
           this.logger.error({
             error: error.message,
             method,
             path,
             config: config.name
-          }, 'Failed to register API endpoint');
+          }, errorMsg);
+          
+          failedMappings.push(errorMsg);
         }
       }
     });
+    
+    // If there were failures, add to failedMocks
+    if (failedMappings.length > 0) {
+      const configKey = config._location || config.name;
+      if (!this.failedMocks.api[configKey]) {
+        this.failedMocks.api[configKey] = [];
+      }
+      this.failedMocks.api[configKey].push(...failedMappings);
+    }
   }
 
   /**

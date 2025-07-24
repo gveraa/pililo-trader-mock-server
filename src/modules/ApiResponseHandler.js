@@ -45,12 +45,12 @@ class ApiResponseHandler {
         reply.send();
       }
 
-      this.logger.info({
+      this.logger.debug({
         status: responseConfig.status || 200,
         headers: responseConfig.headers,
         hasBody: !!(responseConfig.jsonBody || responseConfig.body || responseConfig.base64Body),
         delay: responseConfig.delay
-      }, '→ API response sent');
+      }, 'API response sent');
 
     } catch (error) {
       this.logger.error({

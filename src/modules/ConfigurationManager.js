@@ -178,27 +178,17 @@ class ConfigurationManager {
         
       }
       
-      // Create merged API configuration if any
+      // Add API configurations individually (no merging)
       if (apiConfigs.length > 0) {
-        const mergedApiConfig = {
-          name: 'merged-api-server',
-          type: 'api',
-          description: 'Merged API configuration from all sources',
-          mappings: [],
-          _mergedConfigs: [],
-          _sources: apiConfigs.map(c => c.config._metadata.fileName)
-        };
-        
-        // Merge all API configs
         for (const { config, prefix } of apiConfigs) {
-          this.mergeApiConfigIntoMaster(mergedApiConfig, config, prefix);
+          // Add metadata about location
+          config._location = prefix === 'root' ? config.name : `${prefix}/${config.name}`;
+          
+          if (!validateOnly) {
+            this.configs.set(config.name, config);
+          }
+          results.configurations.push(config);
         }
-        
-        if (!validateOnly) {
-          this.configs.set(mergedApiConfig.name, mergedApiConfig);
-        }
-        results.configurations.push(mergedApiConfig);
-        
       }
 
 
@@ -342,12 +332,7 @@ class ConfigurationManager {
           errors.push(`Duplicate mapping IDs found: ${duplicates.join(', ')}`);
         }
         
-        // Validate each mapping has either urlPath or urlPathPattern
-        config.mappings.forEach((mapping, index) => {
-          if (!mapping.request.urlPath && !mapping.request.urlPathPattern) {
-            errors.push(`Mapping ${mapping.id || index}: Must have either urlPath or urlPathPattern`);
-          }
-        });
+        // Schema validation handles urlPath/urlPathPattern constraints via oneOf
       }
     }
 

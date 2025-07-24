@@ -1,6 +1,6 @@
 # Pililo Trader Mock Server
 
-A configuration-driven mock server that supports both WebSocket and REST API mocking. It merges multiple JSON configurations into a single server running on port 8080 for testing trading platforms, real-time data feeds, and API endpoints.
+A configuration-driven mock server that supports both WebSocket and REST API mocking. It runs a single server on port 8080 that merges WebSocket configurations while loading API configurations individually for testing trading platforms, real-time data feeds, and API endpoints.
 
 ## Table of Contents
 
@@ -113,7 +113,7 @@ docker-compose down
 
 ## Configuration Schema
 
-Create JSON files either directly in `mocks/` or organized in subdirectories. All configurations are automatically merged. Each configuration must specify a `type` field: either `"ws"` for WebSocket or `"api"` for REST API mocking.
+Create JSON files either directly in `mocks/` or organized in subdirectories. WebSocket configurations are automatically merged, while API configurations are loaded individually to avoid path conflicts. Each configuration must specify a `type` field: either `"ws"` for WebSocket or `"api"` for REST API mocking.
 
 ### Directory Structure (Flexible)
 
@@ -351,8 +351,7 @@ The server scans `mocks/` folder and all subdirectories, merging configurations 
 ✓ Loaded valid API configuration: ripio-endpoints
 ✓ Created merged WebSocket configuration
   - Total: 5 scheduled messages, 8 response rules
-✓ Created merged API configuration
-  - Total: 15 mappings
+✓ Loaded 2 API configurations individually
 🚀 Mock server started on port 8080
 ```
 
@@ -444,7 +443,6 @@ The server validates all configurations on startup:
 - Unique configuration names within subdirectories
 - Unique rule/message/mapping IDs within each config
 - JSONPath expression syntax
-- API mappings must have either urlPath or urlPathPattern
 - Valid HTTP methods and status codes
 
 ## Status Endpoint
