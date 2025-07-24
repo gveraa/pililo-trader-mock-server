@@ -1,0 +1,435 @@
+{
+  "name": "ripio-trade-errors",
+  "type": "api",
+  "description": "Api mock server simulating error conditions and edge cases",
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/ripio/ticker",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": [
+            {
+              "ask": 250000.15,
+              "base_code": "BTC",
+              "base_id": "9A5E2EF4-9547-418A-8EC6-C6EADBB8B32F",
+              "bid": 240000.15,
+              "date": "2017-10-20T00:00:00Z",
+              "first": 245000.15,
+              "high": 250000.15,
+              "is_frozen": false,
+              "last": 245000.15,
+              "low": 200000.15,
+              "pair": "BTC_BRL",
+              "price_change_percent_24h": "-12",
+              "quote_code": "BRL",
+              "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+              "quote_volume": 150.1,
+              "trades_quantity": 123,
+              "volume": 123.12345678
+            }
+          ],
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/ripio/ticker/([A-Z]+_[A-Z]+)",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "ask": 95629,
+            "base_code": "BTC",
+            "base_id": "9A5E2EF4-9547-418A-8EC6-C6EADBB8B32F",
+            "bid": 94171,
+            "date": "2022-11-11T01:31:35.820Z",
+            "first": 98444,
+            "high": 98444,
+            "is_frozen": false,
+            "last": 94311,
+            "low": 85034,
+            "price_change_percent_24h": "-12",
+            "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+            "quote_code": "BRL",
+            "quote_volume": 150.1,
+            "trades_quantity": 1199,
+            "volume": 27.26776846
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/ripio/book/orders/level-3",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        },
+        "queryParameters": {
+          "pair": {
+            "matches": "[A-Z]+_[A-Z]+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "timestamp": 1675708481219,
+            "asks": [
+              {
+                "amount": 0.1283746,
+                "id": "554F2D70-04B9-4E26-9548-9C35B025A018",
+                "price": 1923847
+              }
+            ],
+            "bids": [
+              {
+                "amount": 0.256566,
+                "id": "E6D05F51-D79B-47CF-84C5-B157120EBC25",
+                "price": 1915200
+              }
+            ],
+            "hash": "16757084812196786445"
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/ripio/book/orders/level-2",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        },
+        "queryParameters": {
+          "pair": {
+            "matches": "[A-Z]+_[A-Z]+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "timestamp": 1675708481219,
+            "asks": [
+              {
+                "amount": 0.1283746,
+                "price": 1923847
+              }
+            ],
+            "bids": [
+              {
+                "amount": 0.1283746,
+                "price": 1923847
+              }
+            ]
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/ripio/pairs",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": [
+            {
+              "amount_tick": 0.0001,
+              "base": "BTC",
+              "base_name": "Bitcoin",
+              "enabled": true,
+              "min_amount": 0.0005,
+              "min_value": 10,
+              "price_tick": 1,
+              "quote": "BRL",
+              "quote_name": "Brazilian real",
+              "symbol": "BTC_BRL",
+              "countries": [
+                "BR"
+              ],
+              "max_price_variation": 10
+            }
+          ],
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/ripio/orders/estimate-price/([A-Z]+_[A-Z]+)",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        },
+        "queryParameters": {
+          "amount": {
+            "matches": "\\d+\\.?\\d*"
+          },
+          "side": {
+            "matches": "(buy|sell)"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "price": 54049.12
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/ripio/withdrawals/estimate-fee/([A-Z]+)",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "amount": 0.000012,
+            "network": "bitcoin"
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/ripio/wallets/is-internal",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        },
+        "queryParameters": {
+          "address": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "is_internal": false
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/ripio/wallets/([A-Z]+)/([a-zA-Z]+)",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "address": "3JentmkNdL97VQDtgRMehxPOMS4AveUZJ1",
+            "currency_code": "BTC",
+            "tag": null,
+            "memo": null,
+            "network": "bitcoin"
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/ripio/user/fees-and-limits",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          },
+          "X-TIMESTAMP": {
+            "matches": "\\d+"
+          },
+          "X-SIGNATURE": {
+            "matches": ".*"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "BRL": [
+              {
+                "amount_limit": 0,
+                "days_to_release_limit": 0,
+                "operation_id": 18,
+                "operation_description": null,
+                "operation_name": "Tax over bank account withdraw",
+                "operation_type": "D",
+                "tax_amount": 4.9,
+                "tax_index": 0.0099,
+                "tax_is_dynamic_index": false
+              }
+            ],
+            "BTC": [
+              {
+                "amount_limit": 0,
+                "days_to_release_limit": 0,
+                "operation_id": 23,
+                "operation_description": null,
+                "operation_name": "Tax over buy, executed",
+                "operation_type": "D",
+                "tax_amount": 0,
+                "tax_index": 0.0025,
+                "tax_is_dynamic_index": false
+              }
+            ]
+          },
+          "error_code": null,
+          "message": null
+        }
+      }
+    }
+  ]
+}

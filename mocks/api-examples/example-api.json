@@ -1,0 +1,88 @@
+{
+  "name": "example-api",
+  "type": "api",
+  "description": "Example API mock server",
+  "mappings": [
+    {
+      "id": "get-ticker",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/ticker"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": [
+            {
+              "symbol": "BTC_USD",
+              "price": 50000.00,
+              "volume": 123.45,
+              "timestamp": "{{timestamp}}"
+            }
+          ],
+          "status": "success"
+        }
+      }
+    },
+    {
+      "id": "get-ticker-by-pair",
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/api/ticker/([A-Z]+_[A-Z]+)"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "data": {
+            "symbol": "{{request.params[0]}}",
+            "price": 50000.00,
+            "volume": 123.45,
+            "timestamp": "{{timestamp}}"
+          },
+          "status": "success"
+        },
+        "delay": 500
+      }
+    },
+    {
+      "id": "post-order",
+      "request": {
+        "method": "POST",
+        "urlPath": "/api/order",
+        "headers": {
+          "Content-Type": {
+            "equals": "application/json"
+          },
+          "Authorization": {
+            "matches": "Bearer .+"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.symbol",
+              "matches": "[A-Z]+_[A-Z]+"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "orderId": "ORD-{{timestamp}}",
+          "status": "pending",
+          "message": "Order created successfully"
+        }
+      }
+    }
+  ]
+}

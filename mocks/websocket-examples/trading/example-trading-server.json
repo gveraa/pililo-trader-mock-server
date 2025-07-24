@@ -1,0 +1,465 @@
+{
+  "name": "ripio-trade-websocket",
+  "description": "Ripio Trade WebSocket API Mock Server",
+  "type": "ws",
+  "scheduledMessages": [
+    {
+      "id": "ticker-btc-brl",
+      "interval": 5000,
+      "startDelay": 2000,
+      "enabled": true,
+      "message": {
+        "id": "{{sequence_ticker}}",
+        "topic": "ticker@BTC_BRL",
+        "timestamp": "{{timestamp}}",
+        "body": {
+          "ask": 95629,
+          "base_code": "BTC",
+          "base_id": "9A5E2EF4-9547-418A-8EC6-C6EADBB8B32F",
+          "bid": 94171,
+          "date": "{{timestamp}}",
+          "high": 98444,
+          "low": 85034,
+          "pair": "BTC_BRL",
+          "price_change_percent_24h": "-3.2",
+          "quote_code": "BRL",
+          "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+          "quote_volume": 150.1,
+          "trades_quantity": 1199,
+          "volume": 27.26776846,
+          "first": 98444,
+          "last": 94311,
+          "is_frozen": false,
+          "conversions": [
+            {
+              "currency_code": "USD",
+              "volume": 18500.45
+            },
+            {
+              "currency_code": "EUR",
+              "volume": 17200.30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ticker-eth-brl",
+      "interval": 5000,
+      "startDelay": 3000,
+      "enabled": true,
+      "message": {
+        "id": "{{sequence_ticker_eth}}",
+        "topic": "ticker@ETH_BRL",
+        "timestamp": "{{timestamp}}",
+        "body": {
+          "ask": 15600.12,
+          "base_code": "ETH",
+          "base_id": "13A4B83B-E74F-425C-BC0A-03A9C0F29FAD",
+          "bid": 15400.12,
+          "date": "{{timestamp}}",
+          "high": 15999.12,
+          "low": 15000.12,
+          "pair": "ETH_BRL",
+          "price_change_percent_24h": "2.1",
+          "quote_code": "BRL",
+          "quote_id": "48898138-8623-4555-9468-B1A1505A9352",
+          "quote_volume": 180.1,
+          "trades_quantity": 456,
+          "volume": 123.12345678,
+          "first": 15999.15,
+          "last": 15500.12,
+          "is_frozen": false,
+          "conversions": [
+            {
+              "currency_code": "USD",
+              "volume": 1200.75
+            },
+            {
+              "currency_code": "EUR",
+              "volume": 1100.25
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "orderbook-level2-btc",
+      "interval": 3000,
+      "startDelay": 1000,
+      "enabled": true,
+      "message": {
+        "id": "{{sequence_orderbook}}",
+        "topic": "orderbook/level_2@BTC_BRL",
+        "timestamp": "{{timestamp}}",
+        "body": {
+          "asks": [
+            {
+              "amount": 0.01187517,
+              "price": 95629
+            },
+            {
+              "amount": 0.05234,
+              "price": 95650
+            },
+            {
+              "amount": 0.12456,
+              "price": 95700
+            }
+          ],
+          "bids": [
+            {
+              "amount": 0.46097295,
+              "price": 94171
+            },
+            {
+              "amount": 0.25678,
+              "price": 94150
+            },
+            {
+              "amount": 0.78954,
+              "price": 94100
+            }
+          ],
+          "pair": "BTC_BRL",
+          "hash": "16757084812196786445"
+        }
+      }
+    },
+    {
+      "id": "trade-simulation-btc",
+      "interval": 8000,
+      "startDelay": 4000,
+      "enabled": true,
+      "message": {
+        "id": "{{sequence_trade}}",
+        "topic": "trade@BTC_BRL",
+        "timestamp": "{{timestamp}}",
+        "body": {
+          "amount": 0.00270754,
+          "date": "{{timestamp}}",
+          "id": "{{trade_id}}",
+          "maker_order_id": "1FD30735-E055-4200-AD3D-007B02A5BA92",
+          "maker_side": "sell",
+          "maker_type": "limit",
+          "pair": "BTC_BRL",
+          "price": 94500,
+          "taker_order_id": "DBC6D4AF-D454-46DF-80EC-E19528A0FB25",
+          "taker_side": "buy",
+          "taker_type": "market",
+          "timestamp": "{{timestamp}}",
+          "total_value": 255.87
+        }
+      }
+    }
+  ],
+  "responseRules": [
+    {
+      "id": "subscribe-ticker",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.method",
+        "value": "subscribe"
+      },
+      "response": {
+        "message": {
+          "id": -1,
+          "topic": "subscription",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "status": "subscribed",
+            "topics": "{{request.topics}}",
+            "message": "Successfully subscribed to topics"
+          }
+        },
+        "delay": 100
+      }
+    },
+    {
+      "id": "unsubscribe-response",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.method",
+        "value": "unsubscribe"
+      },
+      "response": {
+        "message": {
+          "id": -1,
+          "topic": "subscription",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "status": "unsubscribed",
+            "topics": "{{request.topics}}",
+            "message": "Successfully unsubscribed from topics"
+          }
+        },
+        "delay": 50
+      }
+    },
+    {
+      "id": "ping-pong",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.method",
+        "value": "ping"
+      },
+      "response": {
+        "message": {
+          "id": -1,
+          "topic": "pong",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "message": "pong"
+          }
+        },
+        "delay": 0,
+        "multiple": true
+      }
+    },
+    {
+      "id": "private-subscription-with-ticket",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.ticket",
+        "value": "D90A9A10-06AF-44AF-8592-BAF866DD1503"
+      },
+      "response": {
+        "message": {
+          "id": -1,
+          "topic": "subscription",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "status": "subscribed_private",
+            "topics": "{{request.topics}}",
+            "ticket": "{{request.ticket}}",
+            "message": "Successfully subscribed to private topics"
+          }
+        },
+        "delay": 150
+      }
+    },
+    {
+      "id": "order-status-simulation",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "order_status"
+      },
+      "response": {
+        "message": {
+          "id": "{{sequence_order}}",
+          "topic": "order_status",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "amount": 0.001,
+            "average_execution_price": 94500,
+            "id": "F55E4E01-C39B-4AA7-848B-1C6A362C386E",
+            "created_at": "{{timestamp}}",
+            "executed_amount": 0.001,
+            "external_id": null,
+            "pair": "BTC_BRL",
+            "price": 94500,
+            "remaining_amount": 0,
+            "side": "buy",
+            "status": "executed_completely",
+            "type": "limit",
+            "updated_at": "{{timestamp}}",
+            "user_id": "30B8CDBB-BDBD-4B60-A90F-860AB46B76F7"
+          }
+        },
+        "delay": 200
+      }
+    },
+    {
+      "id": "balance-update-simulation",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "balance"
+      },
+      "response": {
+        "message": {
+          "id": "{{sequence_balance}}",
+          "topic": "balance",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "user_id": "299E7131-CE8C-422F-A1CF-497BFA116F89",
+            "balances": [
+              {
+                "available_amount": 1.5,
+                "currency_code": "BTC",
+                "locked_amount": 0.1
+              },
+              {
+                "available_amount": 25000.50,
+                "currency_code": "BRL",
+                "locked_amount": 1500.00
+              },
+              {
+                "available_amount": 10.75,
+                "currency_code": "ETH",
+                "locked_amount": 2.25
+              }
+            ]
+          }
+        },
+        "delay": 300
+      }
+    },
+    {
+      "id": "user-trades-simulation",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "user_trades"
+      },
+      "response": {
+        "message": {
+          "id": "{{sequence_user_trades}}",
+          "topic": "user_trades",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "trade": {
+              "amount": 0.001,
+              "date": "{{timestamp}}",
+              "fee": 0.25,
+              "fee_currency": "BRL",
+              "id": "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+              "maker_order_id": "AF1C3AD2-D5A2-41CC-9A4C-646B600F9E01",
+              "pair_code": "BTC_BRL",
+              "price": 94500,
+              "side": "buy",
+              "taker_or_maker": "taker",
+              "taker_order_id": "52B46D87-86A1-4978-B141-4E18E3E47514",
+              "timestamp": "{{timestamp}}",
+              "total_value": 94.50,
+              "type": "limit"
+            },
+            "user_id": "30B8CDBB-BDBD-4B60-A90F-860AB46B76F7"
+          }
+        },
+        "delay": 250
+      }
+    },
+    {
+      "id": "deposit-notification",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "deposit"
+      },
+      "response": {
+        "message": {
+          "id": "{{sequence_deposit}}",
+          "topic": "deposit",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "id": "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+            "amount": 0.01,
+            "hash": "0x79704c92b31061b8f51e26486d6454aff3e3c58aa0d51f0f803d6fd063be8100",
+            "currency_code": "BTC",
+            "is_internal": false,
+            "status": "confirmed",
+            "create_date": "{{timestamp}}",
+            "update_date": "{{timestamp}}",
+            "user_id": "5B6A43AE-8012-402D-966F-87CF64689535",
+            "confirmation_date": "{{timestamp}}",
+            "network": "bitcoin"
+          }
+        },
+        "delay": 500
+      }
+    },
+    {
+      "id": "withdrawal-notification",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "withdrawal"
+      },
+      "response": {
+        "message": {
+          "id": "{{sequence_withdrawal}}",
+          "topic": "withdrawal",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "id": "2B222F22-5235-45FA-97FC-E9DBFA2575EE",
+            "amount": 0.005,
+            "currency_code": "BTC",
+            "status": "pending",
+            "miner_fee": 0.0001,
+            "fee": 0.0002,
+            "external_id": "08799ECC-F6B1-498E-B89C-2A05E6A181B9",
+            "create_date": "{{timestamp}}",
+            "destination_address": "1AU4BoYaxSunkFTTEMYXJ41c9bvQG6Wa2",
+            "update_date": "{{timestamp}}",
+            "hash": "0x79704c92b31061b8f51e26486d6454aff3e3c58aa0d51f0f803d6fd063be8100",
+            "is_internal": false,
+            "origin_address": "3PQhyXH1EZs1bZ23ZafqQDyeViqxn5KdXN",
+            "network": "bitcoin",
+            "user_id": "5B6A43AE-8012-402D-966F-87CF64689535"
+          }
+        },
+        "delay": 400
+      }
+    },
+    {
+      "id": "invalid-method-error",
+      "enabled": true,
+      "matcher": {
+        "type": "regex",
+        "value": ".*\"method\"\\s*:\\s*\"(?!subscribe|unsubscribe|ping).*\""
+      },
+      "response": {
+        "message": {
+          "id": -1,
+          "topic": "error",
+          "timestamp": "{{timestamp}}",
+          "body": {
+            "error": "Invalid method",
+            "message": "Supported methods are: subscribe, unsubscribe, ping",
+            "code": 4001
+          }
+        },
+        "delay": 100
+      }
+    }
+  ],
+  "connectionBehavior": {
+    "maxConnections": 1000,
+    "onConnect": {
+      "message": {
+        "id": -1,
+        "topic": "welcome",
+        "timestamp": "{{timestamp}}",
+        "body": {
+          "server": "ripio-trade-websocket-mock",
+          "version": "v4.0",
+          "message": "Welcome to Ripio Trade WebSocket API Mock",
+          "supported_topics": [
+            "trade@{pair}",
+            "ticker@{pair}",
+            "orderbook/level_2@{pair}",
+            "orderbook/level_3@{pair}",
+            "orderbook/level_2_with_users@{pair}",
+            "orderbook/level_2_delta@{pair}",
+            "order_status",
+            "balance",
+            "user_trades",
+            "deposit",
+            "withdrawal"
+          ],
+          "example_pairs": ["BTC_BRL", "ETH_BRL", "BTC_USD", "ETH_USD"]
+        }
+      },
+      "delay": 500
+    },
+    "onDisconnect": {
+      "logLevel": "info"
+    }
+  }
+}

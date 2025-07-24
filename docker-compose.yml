@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  websocket-mock-server:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./mocks:/app/mocks
+    environment:
+      - NODE_ENV=production
+      - MOCKS_DIR=mocks
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Health check passed')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

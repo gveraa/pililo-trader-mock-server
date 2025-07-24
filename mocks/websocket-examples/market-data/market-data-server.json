@@ -1,0 +1,194 @@
+{
+  "name": "market-data-server",
+  "description": "Real-time market data and analytics server",
+  "type": "ws",
+  "connectionBehavior": {
+    "maxConnections": 200,
+    "onConnect": {
+      "message": {
+        "type": "market_welcome",
+        "message": "Connected to Market Data Feed",
+        "server_time": "{{timestamp}}",
+        "available_symbols": ["BTC/USDT", "ETH/USDT", "ADA/USDT", "SOL/USDT"],
+        "data_types": ["price", "volume", "ohlc", "trades"]
+      },
+      "delay": 75
+    },
+    "onDisconnect": {
+      "logLevel": "debug"
+    }
+  },
+  "scheduledMessages": [
+    {
+      "id": "btc-price-feed",
+      "interval": 1000,
+      "enabled": true,
+      "startDelay": 500,
+      "message": {
+        "type": "price_update",
+        "symbol": "BTC/USDT",
+        "price": "{{random.number(42000,48000)}}",
+        "change_24h": "{{random.number(-5,5)}}%",
+        "volume_24h": "{{random.number(1000000,5000000)}}",
+        "timestamp": "{{timestamp}}"
+      }
+    },
+    {
+      "id": "eth-price-feed",
+      "interval": 1500,
+      "enabled": true,
+      "startDelay": 750,
+      "message": {
+        "type": "price_update",
+        "symbol": "ETH/USDT",
+        "price": "{{random.number(2800,3200)}}",
+        "change_24h": "{{random.number(-4,6)}}%",
+        "volume_24h": "{{random.number(800000,2000000)}}",
+        "timestamp": "{{timestamp}}"
+      }
+    },
+    {
+      "id": "market-summary",
+      "interval": 10000,
+      "enabled": true,
+      "startDelay": 2000,
+      "message": {
+        "type": "market_summary",
+        "total_market_cap": "${{random.number(1800000000000,2200000000000)}}",
+        "btc_dominance": "{{random.number(40,45)}}%",
+        "active_cryptocurrencies": "{{random.number(8000,10000)}}",
+        "fear_greed_index": "{{random.number(20,80)}}",
+        "timestamp": "{{timestamp}}"
+      }
+    },
+    {
+      "id": "top-gainers",
+      "interval": 30000,
+      "enabled": true,
+      "startDelay": 10000,
+      "message": {
+        "type": "top_gainers",
+        "gainers": [
+          {
+            "symbol": "{{random.choice(['DOT/USDT', 'LINK/USDT', 'UNI/USDT'])}}",
+            "change": "+{{random.number(5,15)}}%"
+          },
+          {
+            "symbol": "{{random.choice(['AVAX/USDT', 'ATOM/USDT', 'NEAR/USDT'])}}",
+            "change": "+{{random.number(8,20)}}%"
+          }
+        ],
+        "timestamp": "{{timestamp}}"
+      }
+    }
+  ],
+  "responseRules": [
+    {
+      "id": "subscribe-symbol",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.action",
+        "value": "subscribe_symbol"
+      },
+      "response": {
+        "delay": 25,
+        "multiple": false,
+        "message": {
+          "type": "symbol_subscription_confirmed",
+          "symbol": "{{request.symbol}}",
+          "status": "active",
+          "update_frequency": "1000ms",
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "get-ohlc",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "get_ohlc"
+      },
+      "response": {
+        "delay": 150,
+        "multiple": false,
+        "message": {
+          "type": "ohlc_data",
+          "symbol": "{{request.symbol}}",
+          "timeframe": "{{request.timeframe}}",
+          "data": {
+            "open": "{{random.number(40000,50000)}}",
+            "high": "{{random.number(45000,52000)}}",
+            "low": "{{random.number(38000,44000)}}",
+            "close": "{{random.number(42000,48000)}}",
+            "volume": "{{random.number(1000,10000)}}"
+          },
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "get-orderbook",
+      "enabled": true,
+      "matcher": {
+        "type": "regex",
+        "value": "orderbook|depth"
+      },
+      "response": {
+        "delay": 100,
+        "multiple": false,
+        "message": {
+          "type": "orderbook",
+          "symbol": "{{request.symbol}}",
+          "bids": [
+            ["{{random.number(42000,44000)}}", "{{random.number(0.1,2)}}"],
+            ["{{random.number(41800,43800)}}", "{{random.number(0.5,3)}}"],
+            ["{{random.number(41600,43600)}}", "{{random.number(1,5)}}"]
+          ],
+          "asks": [
+            ["{{random.number(44200,46200)}}", "{{random.number(0.1,2)}}"],
+            ["{{random.number(44400,46400)}}", "{{random.number(0.5,3)}}"],
+            ["{{random.number(44600,46600)}}", "{{random.number(1,5)}}"]
+          ],
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "heartbeat-response",
+      "enabled": true,
+      "matcher": {
+        "type": "exact",
+        "value": {"type": "ping"}
+      },
+      "response": {
+        "delay": 0,
+        "multiple": true,
+        "message": {
+          "type": "pong",
+          "server_time": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "invalid-symbol-error",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.symbol",
+        "value": "INVALID/USDT"
+      },
+      "response": {
+        "delay": 50,
+        "multiple": false,
+        "message": {
+          "type": "error",
+          "code": "INVALID_SYMBOL",
+          "message": "Symbol {{request.symbol}} is not supported",
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "example-websocket",
+  "type": "ws",
+  "description": "Example WebSocket mock server",
+  "scheduledMessages": [
+    {
+      "id": "heartbeat",
+      "interval": 5000,
+      "message": {
+        "type": "heartbeat",
+        "timestamp": "{{timestamp}}"
+      },
+      "enabled": true
+    }
+  ],
+  "responseRules": [
+    {
+      "id": "echo",
+      "matcher": {
+        "type": "contains",
+        "value": "echo"
+      },
+      "response": {
+        "message": {
+          "type": "echo",
+          "original": "{{request}}",
+          "timestamp": "{{timestamp}}"
+        },
+        "delay": 100
+      }
+    }
+  ],
+  "connectionBehavior": {
+    "maxConnections": 100,
+    "onConnect": {
+      "message": {
+        "type": "welcome",
+        "message": "Connected to example WebSocket server",
+        "timestamp": "{{timestamp}}"
+      },
+      "delay": 0
+    }
+  }
+}

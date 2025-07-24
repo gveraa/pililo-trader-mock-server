@@ -1,0 +1,115 @@
+{
+  "name": "crypto-news-server",
+  "description": "Mock server for cryptocurrency news and alerts",
+  "type": "ws",
+  "connectionBehavior": {
+    "maxConnections": 100,
+    "onConnect": {
+      "message": {
+        "type": "news_welcome",
+        "message": "Welcome to Crypto News Feed",
+        "timestamp": "{{timestamp}}",
+        "supported_channels": ["breaking_news", "market_analysis", "regulatory"]
+      },
+      "delay": 150
+    }
+  },
+  "scheduledMessages": [
+    {
+      "id": "breaking-news",
+      "interval": 30000,
+      "enabled": true,
+      "startDelay": 5000,
+      "message": {
+        "type": "breaking_news",
+        "category": "crypto",
+        "headline": "Bitcoin reaches new milestone at ${{random.number(40000,50000)}}",
+        "source": "CryptoNews",
+        "timestamp": "{{timestamp}}",
+        "urgency": "high"
+      }
+    },
+    {
+      "id": "market-analysis",
+      "interval": 60000,
+      "enabled": true,
+      "startDelay": 15000,
+      "message": {
+        "type": "market_analysis",
+        "analyst": "{{random.choice(['John Doe', 'Jane Smith', 'Alex Johnson'])}}", 
+        "summary": "Market showing {{random.choice(['bullish', 'bearish', 'sideways'])}} trends",
+        "confidence": "{{random.number(70,95)}}%",
+        "timestamp": "{{timestamp}}"
+      }
+    }
+  ],
+  "responseRules": [
+    {
+      "id": "subscribe-news",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.action",
+        "value": "subscribe_news"
+      },
+      "response": {
+        "delay": 100,
+        "multiple": false,
+        "message": {
+          "type": "news_subscription_confirmed",
+          "channel": "{{request.channel}}",
+          "status": "subscribed",
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "unsubscribe-news",
+      "enabled": true,
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.action", 
+        "value": "unsubscribe_news"
+      },
+      "response": {
+        "delay": 50,
+        "multiple": false,
+        "message": {
+          "type": "news_unsubscription_confirmed",
+          "channel": "{{request.channel}}",
+          "status": "unsubscribed",
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "news-archive-request",
+      "enabled": true,
+      "matcher": {
+        "type": "contains",
+        "value": "get_archive"
+      },
+      "response": {
+        "delay": 200,
+        "multiple": false,
+        "message": {
+          "type": "news_archive",
+          "articles": [
+            {
+              "id": "{{random.uuid}}",
+              "headline": "DeFi protocol reaches $1B TVL",
+              "timestamp": "{{timestamp}}"
+            },
+            {
+              "id": "{{random.uuid}}",
+              "headline": "New cryptocurrency regulation proposed",
+              "timestamp": "{{timestamp}}"
+            }
+          ],
+          "total_count": "{{random.number(50,200)}}",
+          "timestamp": "{{timestamp}}"
+        }
+      }
+    }
+  ]
+}

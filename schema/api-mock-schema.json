@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "API Mock Definition",
+  "type": "object",
+  "required": ["mappings"],
+  "properties": {
+    "mappings": {
+      "type": "array",
+      "description": "Array of request/response mappings",
+      "items": {
+        "type": "object",
+        "required": ["request", "response"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Optional unique identifier for this mapping"
+          },
+          "request": {
+            "type": "object",
+            "description": "Request matching criteria",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+                "description": "HTTP method to match"
+              },
+              "urlPath": {
+                "type": "string",
+                "description": "Exact URL path to match"
+              },
+              "urlPathPattern": {
+                "type": "string",
+                "description": "Regex pattern to match URL path"
+              },
+              "headers": {
+                "type": "object",
+                "description": "Headers to match",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "matches": {
+                      "type": "string",
+                      "description": "Regex pattern to match header value"
+                    },
+                    "equals": {
+                      "type": "string",
+                      "description": "Exact value to match"
+                    }
+                  }
+                }
+              },
+              "queryParameters": {
+                "type": "object",
+                "description": "Query parameters to match",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "matches": {
+                      "type": "string",
+                      "description": "Regex pattern to match parameter value"
+                    },
+                    "equals": {
+                      "type": "string",
+                      "description": "Exact value to match"
+                    }
+                  }
+                }
+              },
+              "bodyPatterns": {
+                "type": "array",
+                "description": "Patterns to match in request body",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "contains": {
+                      "type": "string",
+                      "description": "Substring to find in body"
+                    },
+                    "matches": {
+                      "type": "string",
+                      "description": "Regex pattern to match body"
+                    },
+                    "equalToJson": {
+                      "description": "JSON object to match exactly"
+                    },
+                    "matchesJsonPath": {
+                      "type": "object",
+                      "properties": {
+                        "expression": {
+                          "type": "string",
+                          "description": "JSONPath expression"
+                        },
+                        "contains": {
+                          "type": "string",
+                          "description": "Expected value contains"
+                        },
+                        "equals": {
+                          "description": "Expected value equals"
+                        },
+                        "matches": {
+                          "type": "string",
+                          "description": "Regex pattern for value"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "oneOf": [
+              {"required": ["urlPath"]},
+              {"required": ["urlPathPattern"]}
+            ]
+          },
+          "response": {
+            "type": "object",
+            "description": "Response to send when request matches",
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599,
+                "description": "HTTP status code"
+              },
+              "headers": {
+                "type": "object",
+                "description": "Response headers",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "body": {
+                "type": "string",
+                "description": "Response body as string"
+              },
+              "jsonBody": {
+                "description": "Response body as JSON object"
+              },
+              "base64Body": {
+                "type": "string",
+                "description": "Response body as base64 encoded string"
+              },
+              "delay": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Delay in milliseconds before sending response"
+              }
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether this mapping is active"
+          }
+        }
+      }
+    }
+  }
+}

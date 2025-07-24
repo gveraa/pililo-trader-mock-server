@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebSocket Mock Definition",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name identifier for this mock server"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional description of what this mock simulates"
+    },
+    "scheduledMessages": {
+      "type": "array",
+      "description": "Messages sent automatically on intervals",
+      "items": {
+        "type": "object",
+        "required": ["id", "interval", "message"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this scheduled message"
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Interval in milliseconds between sends"
+          },
+          "message": {
+            "type": "object",
+            "description": "The message payload to send"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether this scheduled message is active"
+          },
+          "startDelay": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "description": "Initial delay before first send (ms)"
+          }
+        }
+      }
+    },
+    "responseRules": {
+      "type": "array",
+      "description": "Rules for responding to incoming messages",
+      "items": {
+        "type": "object",
+        "required": ["id", "matcher", "response"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this response rule"
+          },
+          "matcher": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["exact", "contains", "regex", "jsonPath"],
+                "description": "Type of matching to perform"
+              },
+              "value": {
+                "description": "Value to match against (string, object, or regex pattern)"
+              },
+              "path": {
+                "type": "string",
+                "description": "JSONPath expression (only for jsonPath type)"
+              }
+            }
+          },
+          "response": {
+            "type": "object",
+            "required": ["message"],
+            "properties": {
+              "message": {
+                "description": "Response message payload"
+              },
+              "delay": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0,
+                "description": "Delay before sending response (ms)"
+              },
+              "multiple": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether this rule can match multiple times"
+              }
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether this response rule is active"
+          }
+        }
+      }
+    },
+    "connectionBehavior": {
+      "type": "object",
+      "description": "Behavior settings for connections",
+      "properties": {
+        "maxConnections": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100,
+          "description": "Maximum concurrent connections"
+        },
+        "onConnect": {
+          "type": "object",
+          "description": "Message to send when client connects",
+          "properties": {
+            "message": {
+              "description": "Welcome message payload"
+            },
+            "delay": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "description": "Delay before sending welcome message (ms)"
+            }
+          }
+        },
+        "onDisconnect": {
+          "type": "object",
+          "description": "Action to perform when client disconnects",
+          "properties": {
+            "logLevel": {
+              "type": "string",
+              "enum": ["trace", "debug", "info", "warn", "error"],
+              "default": "info"
+            }
+          }
+        }
+      }
+    }
+  }
+}
