@@ -63,15 +63,6 @@ class MockServer {
         }
       }
       
-      // Log validation summary
-      if (loadResults.summary.failed > 0) {
-        this.logger.warn({
-          loaded: loadResults.summary.loaded,
-          failed: loadResults.summary.failed,
-          errors: loadResults.summary.errors
-        }, 'Some configurations failed to load');
-      }
-      
       // Organize loaded mocks by type
       this.organizeMocksByType(loadResults.configurations);
       
@@ -81,13 +72,9 @@ class MockServer {
       }
       
       this.logger.info({
-        configurationsLoaded: loadResults.summary.loaded,
-        configurationsFailed: loadResults.summary.failed,
-        wsMocks: Object.keys(this.loadedMocks.ws).length,
-        apiMocks: Object.keys(this.loadedMocks.api).length,
-        failedWsMocks: Object.keys(this.failedMocks.ws).length,
-        failedApiMocks: Object.keys(this.failedMocks.api).length
-      }, `📋 Initialization complete: ${loadResults.summary.loaded} valid configurations loaded`);
+        loaded: loadResults.summary.loaded,
+        failed: loadResults.summary.failed
+      }, 'Initialization complete');
       
       return loadResults.configurations;
     } catch (error) {
@@ -319,7 +306,7 @@ class MockServer {
       port: 8080,
       wsConfigs: configs.filter(c => c.type === 'ws').length,
       apiConfigs: configs.filter(c => c.type === 'api').length
-    }, '🚀 Mock server started on port 8080');
+    }, 'Mock server started on port 8080');
   }
 
   /**
@@ -386,12 +373,11 @@ class MockServer {
           const matches = await this.apiRequestMatcher.matches(request, mapping.request);
           
           if (matches) {
-            this.logger.info({
+            this.logger.debug({
               method: request.method,
               path: request.url,
-              config: config.name,
               mappingId: mapping.id || index
-            }, '✓ API request matched');
+            }, 'API request matched');
             
             // Process response
             await this.apiResponseHandler.sendResponse(reply, mapping.response, { request });
@@ -411,11 +397,7 @@ class MockServer {
             server[method](path, handler);
           }
           
-          this.logger.info({
-            method: method.toUpperCase(),
-            path: path,
-            config: config.name
-          }, 'Registered API endpoint');
+          // Log handled by ConfigurationManager
         } catch (error) {
           this.logger.error({
             error: error.message,
@@ -556,11 +538,10 @@ class MockServer {
           parsedMessage = rawMessage.toString();
         }
         
-        this.logger.info({
+        this.logger.debug({
           connectionId,
-          configName: config.name,
-          clientMessage: parsedMessage
-        }, '← Client message received');
+          message: parsedMessage
+        }, 'Client message received');
         
         const matchedRules = await this.messageHandler.handleIncomingMessage(
           connectionId,
@@ -569,12 +550,7 @@ class MockServer {
           connectionInfo
         );
 
-        if (matchedRules.length > 0) {
-          this.logger.info({
-            connectionId,
-            matchedRules: matchedRules.map(r => r.rule.id)
-          }, `Matched ${matchedRules.length} rule(s)`);
-        }
+        // Matching info logged at debug level in MessageHandler
       } catch (error) {
         this.logger.error({
           connectionId,
@@ -606,11 +582,10 @@ class MockServer {
     this.messageHandler.on('response:ready', ({ connectionId, message, ruleId }) => {
       const success = this.connectionManager.sendToConnection(connectionId, message);
       if (success) {
-        this.logger.info({
+        this.logger.debug({
           connectionId,
-          ruleId,
-          serverMessage: message
-        }, '→ Server response sent');
+          ruleId
+        }, 'Server response sent');
       }
     });
 
@@ -618,37 +593,31 @@ class MockServer {
     this.connectionManager.on('connection:added', (connectionInfo) => {
       this.logger.info({
         connectionId: connectionInfo.id,
-        configName: connectionInfo.config.name,
-        remoteAddress: connectionInfo.metadata.remoteAddress
-      }, '🔗 Client connected');
+        configName: connectionInfo.config.name
+      }, 'Client connected');
     });
 
     this.connectionManager.on('connection:removed', (connectionInfo) => {
       this.logger.info({
         connectionId: connectionInfo.id,
-        configName: connectionInfo.config.name,
-        duration: Date.now() - connectionInfo.connectedAt.getTime(),
-        messagesSent: connectionInfo.messageCount.sent,
-        messagesReceived: connectionInfo.messageCount.received
-      }, '❌ Client disconnected');
+        duration: Date.now() - connectionInfo.connectedAt.getTime()
+      }, 'Client disconnected');
     });
 
     // Listen for message sent events from connection manager
     this.connectionManager.on('message:sent', ({ connectionId, message }) => {
-      this.logger.info({
-        connectionId,
-        serverMessage: JSON.parse(message)
-      }, '→ Server message sent');
+      this.logger.debug({
+        connectionId
+      }, 'Server message sent');
     });
 
     // Listen for scheduler events
     this.schedulerService.on('message:executed', ({ taskKey, result }) => {
       if (result.successful > 0) {
-        this.logger.info({
+        this.logger.debug({
           taskKey,
-          sent: result.successful,
-          failed: result.failed
-        }, '📡 Scheduled message broadcast');
+          sent: result.successful
+        }, 'Scheduled message broadcast');
       }
     });
   }

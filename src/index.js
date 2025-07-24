@@ -18,20 +18,15 @@ async function main() {
   const mockServer = new MockServer(logger);
 
   try {
-    logger.info('🚀 Starting Mock Server (WebSocket & API)...');
-    logger.info('📁 Loading and validating JSON files from mocks folder...');
+    logger.info('Starting Mock Server...');
     
     // Initialize the mock server system
     await mockServer.initialize({
       configDir: process.env.MOCKS_DIR || 'mocks'
     });
 
-    logger.info('🎯 Starting mock servers...');
-    
     // Start all configured servers
     await mockServer.startAll();
-
-    logger.info('✅ Mock server is running and ready for WebSocket and API connections!');
 
     // Setup graceful shutdown
     const gracefulShutdown = async (signal) => {

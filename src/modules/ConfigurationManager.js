@@ -39,7 +39,7 @@ class ConfigurationManager {
       
       // Compile base schema
       this.validate = this.ajv.compile(this.baseSchema);
-      this.logger.info('Schemas loaded successfully');
+      // Schemas loaded successfully
     } catch (error) {
       this.logger.error({ error: error.message }, 'Failed to load schemas');
       throw error;
@@ -87,7 +87,7 @@ class ConfigurationManager {
         return results;
       }
 
-      this.logger.info({ configDir, filesFound: files.length }, 'Loading mock configurations from root folder and subdirectories');
+      // Load all configuration files
 
       // Group configurations by type
       const wsConfigs = [];
@@ -115,8 +115,11 @@ class ConfigurationManager {
           } else if (config && config.isError) {
             // Got detailed error information
             this.logger.error({
-              file
-            }, `✗ Invalid configuration file: ${file}`);
+              file,
+              status: 'failed',
+              type: config.type,
+              errors: config.errors
+            }, `✗ Failed: ${file}`);
             results.summary.failed++;
             results.summary.errors.push({
               file,
@@ -173,12 +176,6 @@ class ConfigurationManager {
         }
         results.configurations.push(mergedWsConfig);
         
-        this.logger.info({
-          type: 'ws',
-          scheduledMessages: mergedWsConfig.scheduledMessages.length,
-          responseRules: mergedWsConfig.responseRules.length,
-          sources: mergedWsConfig._sources.length
-        }, '✓ Created merged WebSocket configuration');
       }
       
       // Create merged API configuration if any
@@ -202,26 +199,8 @@ class ConfigurationManager {
         }
         results.configurations.push(mergedApiConfig);
         
-        this.logger.info({
-          type: 'api',
-          mappings: mergedApiConfig.mappings.length,
-          sources: mergedApiConfig._sources.length
-        }, '✓ Created merged API configuration');
       }
 
-      // Log summary
-      this.logger.info({
-        total: results.summary.total,
-        loaded: results.summary.loaded,
-        failed: results.summary.failed
-      }, 'Configuration loading completed');
-
-      if (results.summary.failed > 0) {
-        this.logger.warn({
-          failedCount: results.summary.failed,
-          errors: results.summary.errors
-        }, 'Some configurations failed to load');
-      }
 
       return results;
     } catch (error) {
@@ -246,11 +225,6 @@ class ConfigurationManager {
       // Validate configuration
       const validationResult = this.validateConfiguration(config, skipPortConflictCheck);
       if (!validationResult.isValid) {
-        this.logger.error({
-          file: fileName,
-          errors: validationResult.errors
-        }, 'Invalid mock configuration');
-        
         if (returnErrors) {
           return {
             isError: true,
@@ -386,65 +360,40 @@ class ConfigurationManager {
    * @param {string} filename - Configuration filename
    */
   logConfiguration(config, filename) {
-    const baseLog = {
-      file: filename,
-      name: config.name,
-      type: config.type
-    };
+    let details = [];
     
     if (config.type === 'ws') {
-      this.logger.info({
-        ...baseLog,
-        scheduledMessages: config.scheduledMessages?.length || 0,
-        responseRules: config.responseRules?.length || 0
-      }, `✓ Loaded valid WebSocket configuration: ${config.name}`);
-
-      // Log scheduled messages without sample data
-      if (config.scheduledMessages && config.scheduledMessages.length > 0) {
-        this.logger.info({
-          configName: config.name,
-          scheduledMessages: config.scheduledMessages.map(msg => ({
-            id: msg.id,
-            interval: msg.interval,
-            enabled: msg.enabled,
-            startDelay: msg.startDelay || 0
-          }))
-        }, `Scheduled messages configured for ${config.name}`);
+      // Add WebSocket operations
+      if (config.scheduledMessages) {
+        config.scheduledMessages.forEach(msg => {
+          details.push(`scheduled:${msg.id}@${msg.interval}ms`);
+        });
       }
-
-      // Log response rules without sample data
-      if (config.responseRules && config.responseRules.length > 0) {
-        this.logger.info({
-          configName: config.name,
-          responseRules: config.responseRules.map(rule => ({
-            id: rule.id,
-            matcherType: rule.matcher.type,
-            responseDelay: rule.response.delay || 0,
-            multiple: rule.response.multiple || false,
-            enabled: rule.enabled
-          }))
-        }, `Response rules configured for ${config.name}`);
+      if (config.responseRules) {
+        config.responseRules.forEach(rule => {
+          const matcherInfo = rule.matcher.type === 'jsonPath' ? 
+            `[${rule.matcher.type}:${rule.matcher.path}]` : 
+            `[${rule.matcher.type}]`;
+          details.push(`rule:${rule.id}${matcherInfo}`);
+        });
       }
     } else if (config.type === 'api') {
-      this.logger.info({
-        ...baseLog,
-        mappings: config.mappings?.length || 0
-      }, `✓ Loaded valid API configuration: ${config.name}`);
-      
-      // Log API mappings
-      if (config.mappings && config.mappings.length > 0) {
-        this.logger.info({
-          configName: config.name,
-          mappings: config.mappings.map(mapping => ({
-            id: mapping.id,
-            method: mapping.request.method || 'ANY',
-            path: mapping.request.urlPath || mapping.request.urlPathPattern,
-            status: mapping.response.status,
-            enabled: mapping.enabled !== false
-          }))
-        }, `API mappings configured for ${config.name}`);
+      // Add API endpoints
+      if (config.mappings) {
+        config.mappings.forEach(mapping => {
+          const method = mapping.request.method || 'ANY';
+          const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
+          details.push(`${method} ${path}`);
+        });
       }
     }
+    
+    this.logger.info({
+      file: filename,
+      status: 'succeed',
+      type: config.type,
+      operations: details
+    }, `✓ Loaded: ${filename}`);
   }
 
   /**
@@ -511,12 +460,7 @@ class ConfigurationManager {
       }
     }
 
-    this.logger.info({
-      existingConfig: existingConfig.name,
-      mergedConfig: newConfig.name,
-      totalScheduledMessages: existingConfig.scheduledMessages?.length || 0,
-      totalResponseRules: existingConfig.responseRules?.length || 0
-    }, `✅ Successfully merged '${newConfig.name}' into '${existingConfig.name}'`);
+    // Successfully merged configurations
   }
 
   /**
@@ -573,12 +517,6 @@ class ConfigurationManager {
       }
     }
 
-    this.logger.info({
-      subdirectory: subdirName,
-      configName: config.name,
-      scheduledMessages: config.scheduledMessages?.length || 0,
-      responseRules: config.responseRules?.length || 0
-    }, `✅ Merged '${config.name}' from subdirectory '${subdirName}'`);
   }
 
   /**
@@ -617,11 +555,6 @@ class ConfigurationManager {
       }
     }
 
-    this.logger.info({
-      subdirectory: subdirName,
-      configName: config.name,
-      mappings: config.mappings?.length || 0
-    }, `✅ Merged API config '${config.name}' from subdirectory '${subdirName}'`);
   }
 
   /**

@@ -33,10 +33,7 @@ class SchedulerService extends EventEmitter {
       this.scheduleMessage(config.name, scheduledMsg, broadcastFn);
     });
 
-    this.logger.info({
-      configName: config.name,
-      count: config.scheduledMessages.filter(m => m.enabled).length
-    }, 'Started scheduled messages');
+    // Started scheduled messages
   }
 
   /**
@@ -89,10 +86,9 @@ class SchedulerService extends EventEmitter {
         nextExecution: new Date(Date.now() + interval)
       });
 
-      this.logger.info({
+      this.logger.debug({
         taskKey,
-        interval,
-        startDelay
+        interval
       }, 'Scheduled message task started');
 
       this.emit('task:started', {
