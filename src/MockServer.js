@@ -4,21 +4,25 @@ const ConfigurationManager = require('./modules/ConfigurationManager');
 const ConnectionManager = require('./modules/ConnectionManager');
 const MessageHandler = require('./modules/MessageHandler');
 const SchedulerService = require('./modules/SchedulerService');
-const TemplateEngine = require('./modules/TemplateEngine');
+const FastTemplateEngine = require('./modules/FastTemplateEngine');
 const ApiRequestMatcher = require('./modules/ApiRequestMatcher');
+const FastApiRequestMatcher = require('./modules/FastApiRequestMatcher');
 const ApiResponseHandler = require('./modules/ApiResponseHandler');
+const { generateCorrelationId, getMessagePreview, createRequestLog, createResponseLog } = require('./utils/fastLogger');
+const { extractPath, optimizeMapping, parseScenarioHeader } = require('./utils/performanceOptimizer');
 
 class MockServer {
   constructor(logger) {
     this.logger = logger;
     
     // Initialize modules
-    this.templateEngine = new TemplateEngine(logger);
+    this.templateEngine = new FastTemplateEngine(logger);
     this.configManager = new ConfigurationManager(logger);
     this.connectionManager = new ConnectionManager(logger);
     this.messageHandler = new MessageHandler(logger, this.templateEngine);
     this.schedulerService = new SchedulerService(logger, this.templateEngine);
     this.apiRequestMatcher = new ApiRequestMatcher(logger);
+    this.fastApiMatcher = new FastApiRequestMatcher(logger);
     this.apiResponseHandler = new ApiResponseHandler(logger, this.templateEngine);
     
     // Server management
@@ -341,15 +345,17 @@ class MockServer {
   async createServer() {
     const server = fastify({
       logger: {
+        level: 'error', // Only log errors from Fastify itself
         transport: {
           target: 'pino-pretty',
           options: {
             colorize: true,
             translateTime: 'HH:MM:ss Z',
-            ignore: 'pid,hostname'
+            ignore: 'pid,hostname,reqId,req,res,responseTime'
           }
         }
       },
+      disableRequestLogging: true, // Disable Fastify's request logging
       exposeHeadRoutes: false  // Disable automatic HEAD route generation
     });
 
@@ -406,8 +412,11 @@ class MockServer {
           _priority: this.calculateMappingPriority(mapping)
         };
         
+        // Optimize the mapping for fast matching
+        const optimizedMapping = optimizeMapping(enrichedMapping);
+        
         // Add to global mappings list
-        this.apiMappings.push(enrichedMapping);
+        this.apiMappings.push(optimizedMapping);
       }
     });
     
@@ -501,34 +510,25 @@ class MockServer {
    */
   async matchApiRequest(request, reply) {
     const method = request.method.toUpperCase();
-    const urlPath = request.url.split('?')[0];
+    const urlPath = extractPath(request.url);
+    
+    // Generate correlation ID
+    const correlationId = generateCorrelationId();
+    request.correlationId = correlationId;
     
     // Try each mapping in priority order
     for (const mapping of this.apiMappings) {
-      const mappingMethod = (mapping.request.method || 'GET').toUpperCase();
-      
-      // Skip if method doesn't match
-      if (mappingMethod !== method) {
-        continue;
-      }
-      
-      // Check if path matches
-      let pathMatches = false;
-      if (mapping.request.urlPath) {
-        pathMatches = urlPath === mapping.request.urlPath;
-      } else if (mapping.request.urlPathPattern) {
-        const pattern = new RegExp(mapping.request.urlPathPattern);
-        pathMatches = pattern.test(urlPath);
-      }
-      
-      if (!pathMatches) {
-        continue;
-      }
-      
-      // Check all criteria
-      const matches = await this.apiRequestMatcher.matches(request, mapping.request);
+      // Use fast matcher for optimized mappings
+      const matches = mapping._optimized 
+        ? this.fastApiMatcher.matches(request, mapping, urlPath)
+        : await this.apiRequestMatcher.matches(request, mapping.request);
       
       if (matches) {
+        // Log simple request received with scenario
+        const scenario = request.headers['x-mock-scenario'];
+        this.logger.info(createRequestLog(request.method, request.url, correlationId, scenario), 
+          scenario ? `→ [${correlationId}] ${request.method} ${request.url} [${scenario}]` : `→ [${correlationId}] ${request.method} ${request.url}`);
+        
         this.logger.debug({
           method: request.method,
           path: request.url,
@@ -543,64 +543,44 @@ class MockServer {
         // Check for dynamic scenario patterns in header
         let responseConfig = { ...mapping.response };
         const scenarioHeader = request.headers['x-mock-scenario'];
+        const scenarioResult = parseScenarioHeader(scenarioHeader);
         
-        if (scenarioHeader) {
-          // Handle timeout-[seconds] pattern
-          if (scenarioHeader.startsWith('timeout-')) {
-            const timeoutMatch = scenarioHeader.match(/^timeout-(\d+)$/);
-            if (timeoutMatch) {
-              const timeoutSeconds = parseInt(timeoutMatch[1]);
-              if (timeoutSeconds >= 0 && timeoutSeconds <= 60) {
-                responseConfig.delay = timeoutSeconds * 1000;
-                this.logger.debug({
-                  scenario: scenarioHeader,
-                  delayMs: responseConfig.delay
-                }, 'Dynamic timeout applied from scenario header');
+        if (scenarioResult) {
+          switch (scenarioResult.type) {
+            case 'timeout':
+            case 'slow':
+              responseConfig.delay = scenarioResult.value;
+              this.logger.debug({
+                scenario: scenarioHeader,
+                delayMs: responseConfig.delay
+              }, `Dynamic ${scenarioResult.type} applied from scenario header`);
+              break;
+            
+            case 'error':
+              responseConfig.status = scenarioResult.value;
+              // Provide a default error body if none exists
+              if (!responseConfig.jsonBody && !responseConfig.body) {
+                responseConfig.jsonBody = {
+                  error: `HTTP ${scenarioResult.value}`,
+                  message: this.getDefaultErrorMessage(scenarioResult.value),
+                  timestamp: "{{timestamp}}"
+                };
               }
-            }
-          }
-          
-          // Handle slow-[milliseconds] pattern
-          else if (scenarioHeader.startsWith('slow-')) {
-            const slowMatch = scenarioHeader.match(/^slow-(\d+)$/);
-            if (slowMatch) {
-              const delayMs = parseInt(slowMatch[1]);
-              if (delayMs >= 0 && delayMs <= 60000) { // Max 60 seconds
-                responseConfig.delay = delayMs;
-                this.logger.debug({
-                  scenario: scenarioHeader,
-                  delayMs: responseConfig.delay
-                }, 'Dynamic slow response applied from scenario header');
-              }
-            }
-          }
-          
-          // Handle error-[code] pattern
-          else if (scenarioHeader.startsWith('error-')) {
-            const errorMatch = scenarioHeader.match(/^error-(\d{3})$/);
-            if (errorMatch) {
-              const errorCode = parseInt(errorMatch[1]);
-              if (errorCode >= 400 && errorCode <= 599) {
-                responseConfig.status = errorCode;
-                // Provide a default error body if none exists
-                if (!responseConfig.jsonBody && !responseConfig.body) {
-                  responseConfig.jsonBody = {
-                    error: `HTTP ${errorCode}`,
-                    message: this.getDefaultErrorMessage(errorCode),
-                    timestamp: "{{timestamp}}"
-                  };
-                }
-                this.logger.debug({
-                  scenario: scenarioHeader,
-                  statusCode: errorCode
-                }, 'Dynamic error code applied from scenario header');
-              }
-            }
+              this.logger.debug({
+                scenario: scenarioHeader,
+                statusCode: scenarioResult.value
+              }, 'Dynamic error code applied from scenario header');
+              break;
           }
         }
         
         // Process response
         await this.apiResponseHandler.sendResponse(reply, responseConfig, { request });
+        
+        // Log simple response sent with correlation ID
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, responseConfig.status || 200),
+          `← [${correlationId}] ${responseConfig.status || 200} ${request.method} ${request.url}`);
+        
         return true;
       }
     }
@@ -632,16 +612,25 @@ class MockServer {
   registerBuiltInEndpoints(server) {
     // Health check endpoint
     server.get('/health', async (request, reply) => {
+      const correlationId = generateCorrelationId();
+      this.logger.info(createRequestLog(request.method, request.url, correlationId),
+        `→ [${correlationId}] ${request.method} ${request.url}`);
       const stats = this.connectionManager.getStats();
-      return {
+      const response = {
         status: 'healthy',
         connections: stats.currentConnections,
         uptime: process.uptime()
       };
+      this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
+        `← [${correlationId}] 200 ${request.method} ${request.url}`);
+      return response;
     });
 
     // Status endpoint showing all loaded mocks
     server.get('/status', async (request, reply) => {
+      const correlationId = generateCorrelationId();
+      this.logger.info(createRequestLog(request.method, request.url, correlationId),
+        `→ [${correlationId}] ${request.method} ${request.url}`);
       const status = {
         ws: this.loadedMocks.ws,
         api: {
@@ -665,6 +654,8 @@ class MockServer {
         status.api.failed = this.failedMocks.api;
       }
       
+      this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
+        `← [${correlationId}] 200 ${request.method} ${request.url}`);
       return status;
     });
 
@@ -802,6 +793,17 @@ class MockServer {
           parsedMessage = rawMessage.toString();
         }
         
+        // Generate message correlation ID
+        const msgCorrelationId = generateCorrelationId('msg');
+        
+        // Simple WebSocket request log
+        const messagePreview = getMessagePreview(parsedMessage);
+        this.logger.info({ 
+          type: 'ws-request', 
+          connectionId, 
+          correlationId: msgCorrelationId 
+        }, `→ WS [${connectionId}] [${msgCorrelationId}] ${messagePreview}`);
+        
         this.logger.debug({
           connectionId,
           message: parsedMessage
@@ -811,7 +813,8 @@ class MockServer {
           connectionId,
           rawMessage,
           config,
-          connectionInfo
+          connectionInfo,
+          msgCorrelationId
         );
 
         // Matching info logged at debug level in MessageHandler
@@ -843,29 +846,44 @@ class MockServer {
    */
   setupEventListeners() {
     // Listen for response ready events from message handler
-    this.messageHandler.on('response:ready', ({ connectionId, message, ruleId }) => {
+    this.messageHandler.on('response:ready', ({ connectionId, message, ruleId, correlationId }) => {
       const success = this.connectionManager.sendToConnection(connectionId, message);
       if (success) {
+        // Simple WebSocket response log
+        const messagePreview = getMessagePreview(message);
+        const corrId = correlationId ? ` [${correlationId}]` : '';
+        this.logger.info({ 
+          type: 'ws-response', 
+          connectionId, 
+          correlationId: correlationId || undefined 
+        }, `← WS [${connectionId}]${corrId} ${messagePreview}`);
+        
         this.logger.debug({
           connectionId,
-          ruleId
+          ruleId,
+          correlationId
         }, 'Server response sent');
       }
     });
 
     // Listen for connection events
     this.connectionManager.on('connection:added', (connectionInfo) => {
-      this.logger.info({
+      this.logger.info(`✓ WS Connected [${connectionInfo.id}]`);
+      
+      this.logger.debug({
         connectionId: connectionInfo.id,
         configName: connectionInfo.config.name
-      }, 'Client connected');
+      }, 'Client connected details');
     });
 
     this.connectionManager.on('connection:removed', (connectionInfo) => {
-      this.logger.info({
+      const duration = Math.round((Date.now() - connectionInfo.connectedAt.getTime()) / 1000);
+      this.logger.info(`✗ WS Disconnected [${connectionInfo.id}] (${duration}s)`);
+      
+      this.logger.debug({
         connectionId: connectionInfo.id,
         duration: Date.now() - connectionInfo.connectedAt.getTime()
-      }, 'Client disconnected');
+      }, 'Client disconnected details');
     });
 
     // Listen for message sent events from connection manager
@@ -878,10 +896,13 @@ class MockServer {
     // Listen for scheduler events
     this.schedulerService.on('message:executed', ({ taskKey, result }) => {
       if (result.successful > 0) {
+        const [configName, messageId] = taskKey.split('::');
+        this.logger.info(`↻ WS Scheduled [${messageId}] sent to ${result.successful} client(s)`);
+        
         this.logger.debug({
           taskKey,
           sent: result.successful
-        }, 'Scheduled message broadcast');
+        }, 'Scheduled message broadcast details');
       }
     });
   }

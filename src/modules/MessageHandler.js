@@ -16,9 +16,10 @@ class MessageHandler extends EventEmitter {
    * @param {Buffer|string} rawMessage - Raw message from WebSocket
    * @param {Object} config - Configuration for this connection
    * @param {Object} connectionInfo - Connection information
+   * @param {string} correlationId - Correlation ID for this message
    * @returns {Array} Array of matched rules
    */
-  async handleIncomingMessage(connectionId, rawMessage, config, connectionInfo) {
+  async handleIncomingMessage(connectionId, rawMessage, config, connectionInfo, correlationId) {
     const startTime = Date.now();
     
     try {
@@ -367,7 +368,8 @@ class MessageHandler extends EventEmitter {
         this.emit('response:ready', {
           connectionId,
           message: responseMessage,
-          ruleId: rule.id
+          ruleId: rule.id,
+          correlationId
         });
 
         this.logger.debug({
