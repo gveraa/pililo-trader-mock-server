@@ -46,6 +46,9 @@ The server starts on **port 8080** at `ws://localhost:8080/ws`
 - **WebSocket**: `ws://localhost:8080/ws`
 - **Health Check**: `http://localhost:8080/health`
 - **Status**: `http://localhost:8080/status` - Shows all loaded mock configurations
+- **Schema Endpoints**:
+  - `http://localhost:8080/schema/ws` - Returns the complete WebSocket mock JSON schema with base fields (name, type, description)
+  - `http://localhost:8080/schema/api` - Returns the complete API mock JSON schema with base fields (name, type, description)
 - **Test Endpoints**:
   - `http://localhost:8080/status/[code]` - Returns any HTTP status code (100-599)
   - `http://localhost:8080/timeout/[seconds]` - Delays response by specified seconds (0-60)
@@ -474,7 +477,9 @@ The `/status` endpoint returns all loaded mock configurations organized by subdi
       "GET /health",
       "GET /status",
       "GET /status/:code",
-      "GET /timeout/:seconds"
+      "GET /timeout/:seconds",
+      "GET /schema/ws",
+      "GET /schema/api"
     ],
     "example-api": [
       "GET /api/ticker",

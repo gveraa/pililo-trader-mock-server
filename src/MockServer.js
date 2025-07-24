@@ -443,7 +443,9 @@ class MockServer {
             'GET /health',
             'GET /status',
             'GET /status/:code',
-            'GET /timeout/:seconds'
+            'GET /timeout/:seconds',
+            'GET /schema/ws',
+            'GET /schema/api'
           ]
         }
       };
@@ -457,6 +459,61 @@ class MockServer {
       }
       
       return status;
+    });
+
+    // Schema endpoints
+    server.get('/schema/ws', async (request, reply) => {
+      if (!this.configManager.wsSchema || !this.configManager.baseSchema) {
+        return {
+          error: 'WebSocket schema not loaded',
+          message: 'Please ensure the schema files are properly loaded'
+        };
+      }
+      
+      // Merge base schema properties with WebSocket schema
+      const completeSchema = {
+        ...this.configManager.wsSchema,
+        properties: {
+          name: this.configManager.baseSchema.properties.name,
+          type: {
+            ...this.configManager.baseSchema.properties.type,
+            enum: ['ws'],
+            description: 'Type must be "ws" for WebSocket mock'
+          },
+          description: this.configManager.baseSchema.properties.description,
+          ...this.configManager.wsSchema.properties
+        },
+        required: ['name', 'type']
+      };
+      
+      return completeSchema;
+    });
+
+    server.get('/schema/api', async (request, reply) => {
+      if (!this.configManager.apiSchema || !this.configManager.baseSchema) {
+        return {
+          error: 'API schema not loaded',
+          message: 'Please ensure the schema files are properly loaded'
+        };
+      }
+      
+      // Merge base schema properties with API schema
+      const completeSchema = {
+        ...this.configManager.apiSchema,
+        properties: {
+          name: this.configManager.baseSchema.properties.name,
+          type: {
+            ...this.configManager.baseSchema.properties.type,
+            enum: ['api'],
+            description: 'Type must be "api" for API mock'
+          },
+          description: this.configManager.baseSchema.properties.description,
+          ...this.configManager.apiSchema.properties
+        },
+        required: ['name', 'type']
+      };
+      
+      return completeSchema;
     });
 
     // Status code test endpoints
