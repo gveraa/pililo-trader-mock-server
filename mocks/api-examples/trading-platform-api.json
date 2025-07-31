@@ -1,0 +1,129 @@
+{
+  "name": "trading-platform-api",
+  "type": "api",
+  "description": "Trading platform API demonstrating unrestricted scenario usage",
+  "mappings": [
+    {
+      "id": "get-market-ticker",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/v2/ticker"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "symbols": [
+            {
+              "symbol": "BTC/USD",
+              "price": "{{random.number(40000,50000)}}",
+              "change24h": "{{random.number(-10,10)}}",
+              "volume": "{{random.number(1000,5000)}}",
+              "timestamp": "{{timestamp}}"
+            },
+            {
+              "symbol": "ETH/USD",
+              "price": "{{random.number(2500,3500)}}",
+              "change24h": "{{random.number(-10,10)}}",
+              "volume": "{{random.number(5000,10000)}}",
+              "timestamp": "{{timestamp}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "place-order",
+      "request": {
+        "method": "POST",
+        "urlPath": "/api/v2/orders",
+        "headers": {
+          "Authorization": {
+            "matches": "Bearer .+"
+          },
+          "Content-Type": {
+            "equals": "application/json"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.symbol",
+              "matches": "[A-Z]+/[A-Z]+"
+            }
+          },
+          {
+            "matchesJsonPath": {
+              "expression": "$.side",
+              "matches": "buy|sell"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "jsonBody": {
+          "orderId": "ORD-{{timestamp}}-{{random.uuid}}",
+          "symbol": "{{request.body.symbol}}",
+          "side": "{{request.body.side}}",
+          "quantity": "{{request.body.quantity}}",
+          "price": "{{request.body.price}}",
+          "status": "pending",
+          "createdAt": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "get-order-status",
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/api/v2/orders/(ORD-[A-Z0-9-]+)",
+        "headers": {
+          "Authorization": {
+            "matches": "Bearer .+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "orderId": "{{request.params[0]}}",
+          "status": "filled",
+          "filledQuantity": "{{random.number(1,100)}}",
+          "averagePrice": "{{random.number(40000,50000)}}",
+          "fees": "{{random.number(1,50)}}",
+          "executedAt": "{{timestamp}}"
+        }
+      }
+    },
+    {
+      "id": "get-order-book",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/v2/orderbook",
+        "queryParameters": {
+          "symbol": {
+            "matches": "[A-Z]+/[A-Z]+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "symbol": "{{request.query.symbol}}",
+          "bids": [
+            ["{{random.number(40000,40100)}}", "{{random.number(1,10)}}"],
+            ["{{random.number(39900,40000)}}", "{{random.number(1,10)}}"],
+            ["{{random.number(39800,39900)}}", "{{random.number(1,10)}}"]
+          ],
+          "asks": [
+            ["{{random.number(40100,40200)}}", "{{random.number(1,10)}}"],
+            ["{{random.number(40200,40300)}}", "{{random.number(1,10)}}"],
+            ["{{random.number(40300,40400)}}", "{{random.number(1,10)}}"]
+          ],
+          "timestamp": "{{timestamp}}"
+        },
+        "delay": 100
+      }
+    }
+  ]
+}

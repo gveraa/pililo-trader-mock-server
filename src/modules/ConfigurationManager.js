@@ -332,6 +332,13 @@ class ConfigurationManager {
           errors.push(`Duplicate mapping IDs found: ${duplicates.join(', ')}`);
         }
         
+        // Validate scenario restrictions
+        config.mappings.forEach((mapping, index) => {
+          if (mapping.allowedScenarios && mapping.forbiddenScenarios) {
+            errors.push(`Mapping ${mapping.id || index}: Cannot define both allowedScenarios and forbiddenScenarios. Use only one.`);
+          }
+        });
+        
         // Schema validation handles urlPath/urlPathPattern constraints via oneOf
       }
     }

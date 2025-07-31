@@ -198,6 +198,20 @@
             "type": "boolean",
             "default": true,
             "description": "Whether this mapping is active"
+          },
+          "allowedScenarios": {
+            "type": "array",
+            "description": "List of allowed X-Mock-Scenario patterns. If specified, only these scenarios will be processed.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "forbiddenScenarios": {
+            "type": "array", 
+            "description": "List of forbidden X-Mock-Scenario patterns. These scenarios will be ignored.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

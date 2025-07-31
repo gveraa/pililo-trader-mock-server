@@ -1,0 +1,81 @@
+{
+  "name": "health-monitoring-api",
+  "type": "api",
+  "description": "System health and monitoring endpoints with strict scenario restrictions",
+  "mappings": [
+    {
+      "id": "health-check",
+      "request": {
+        "method": "GET",
+        "urlPath": "/health"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "status": "healthy",
+          "timestamp": "{{timestamp}}",
+          "uptime": "{{random.number(1000,999999)}}",
+          "version": "2.0.0"
+        }
+      },
+      "forbiddenScenarios": [
+        "error-401-unauthorized",
+        "error-403-forbidden",
+        "invalid-auth-bearer",
+        "invalid-auth-apikey-[header-name]",
+        "missing-auth-bearer",
+        "missing-auth-apikey-[header-name]",
+        "data-corrupted-json",
+        "connection-reset",
+        "dns-resolution-failure"
+      ]
+    },
+    {
+      "id": "readiness-check",
+      "request": {
+        "method": "GET",
+        "urlPath": "/ready"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "ready": true,
+          "services": {
+            "database": "connected",
+            "cache": "connected",
+            "messageQueue": "connected"
+          }
+        }
+      },
+      "allowedScenarios": [
+        "slow-response-[ms]",
+        "error-503-service-unavailable",
+        "data-null-field-[field-name]"
+      ]
+    },
+    {
+      "id": "metrics-endpoint",
+      "request": {
+        "method": "GET",
+        "urlPath": "/metrics",
+        "headers": {
+          "X-API-Key": {
+            "equals": "monitoring-key-123"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": "# HELP http_requests_total Total HTTP requests\n# TYPE http_requests_total counter\nhttp_requests_total{method=\"GET\",status=\"200\"} {{random.number(1000,99999)}}\nhttp_requests_total{method=\"POST\",status=\"201\"} {{random.number(100,9999)}}\n\n# HELP response_time_seconds Response time in seconds\n# TYPE response_time_seconds histogram\nresponse_time_seconds_bucket{le=\"0.1\"} {{random.number(1000,5000)}}\nresponse_time_seconds_bucket{le=\"0.5\"} {{random.number(5000,10000)}}"
+      },
+      "allowedScenarios": [
+        "valid-auth-apikey-x-api-key",
+        "invalid-auth-apikey-x-api-key",
+        "missing-auth-apikey-x-api-key"
+      ]
+    }
+  ]
+}

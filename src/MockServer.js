@@ -9,7 +9,7 @@ const ApiRequestMatcher = require('./modules/ApiRequestMatcher');
 const FastApiRequestMatcher = require('./modules/FastApiRequestMatcher');
 const ApiResponseHandler = require('./modules/ApiResponseHandler');
 const { generateCorrelationId, getMessagePreview, createRequestLog, createResponseLog } = require('./utils/fastLogger');
-const { extractPath, optimizeMapping, parseScenarioHeader } = require('./utils/performanceOptimizer');
+const { extractPath, optimizeMapping, parseScenarioHeader, getAllAvailableScenarios } = require('./utils/performanceOptimizer');
 
 class MockServer {
   constructor(logger) {
@@ -217,13 +217,17 @@ class MockServer {
         }
       } else if (config.type === 'api') {
         // API configs are not merged - each is loaded individually
-        const endpoints = [];
+        const endpointsInfo = {
+          endpoints: [],
+          mappingsWithScenarios: []
+        };
+        
         if (config.mappings) {
-          config.mappings.forEach(mapping => {
+          config.mappings.forEach((mapping, index) => {
             const method = mapping.request.method || 'ANY';
             const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
             
-            // Include scenario information if present
+            // Build endpoint string
             let endpoint = `${method} ${path}`;
             if (mapping.request.headers?.['X-Mock-Scenario']?.equals) {
               endpoint += ` [scenario: ${mapping.request.headers['X-Mock-Scenario'].equals}]`;
@@ -232,11 +236,21 @@ class MockServer {
               endpoint += ` (${mapping.id})`;
             }
             
-            endpoints.push(endpoint);
+            endpointsInfo.endpoints.push(endpoint);
+            
+            // Track scenario restrictions if any
+            if (mapping.allowedScenarios || mapping.forbiddenScenarios) {
+              endpointsInfo.mappingsWithScenarios.push({
+                endpoint: endpoint,
+                allowedScenarios: mapping.allowedScenarios,
+                forbiddenScenarios: mapping.forbiddenScenarios
+              });
+            }
           });
         }
+        
         const key = config._location || config.name;
-        this.loadedMocks.api[key] = endpoints;
+        this.loadedMocks.api[key] = endpointsInfo;
       }
     });
   }
@@ -543,34 +557,18 @@ class MockServer {
         // Check for dynamic scenario patterns in header
         let responseConfig = { ...mapping.response };
         const scenarioHeader = request.headers['x-mock-scenario'];
-        const scenarioResult = parseScenarioHeader(scenarioHeader);
         
-        if (scenarioResult) {
-          switch (scenarioResult.type) {
-            case 'timeout':
-            case 'slow':
-              responseConfig.delay = scenarioResult.value;
-              this.logger.debug({
-                scenario: scenarioHeader,
-                delayMs: responseConfig.delay
-              }, `Dynamic ${scenarioResult.type} applied from scenario header`);
-              break;
+        // Check if scenarios are allowed for this mapping
+        if (scenarioHeader && this.isScenarioAllowed(scenarioHeader, mapping)) {
+          const scenarioResult = parseScenarioHeader(scenarioHeader);
+          
+          if (scenarioResult) {
+            // Handle multiple scenarios
+            const scenarios = scenarioResult.type === 'multiple' ? scenarioResult.scenarios : [scenarioResult];
             
-            case 'error':
-              responseConfig.status = scenarioResult.value;
-              // Provide a default error body if none exists
-              if (!responseConfig.jsonBody && !responseConfig.body) {
-                responseConfig.jsonBody = {
-                  error: `HTTP ${scenarioResult.value}`,
-                  message: this.getDefaultErrorMessage(scenarioResult.value),
-                  timestamp: "{{timestamp}}"
-                };
-              }
-              this.logger.debug({
-                scenario: scenarioHeader,
-                statusCode: scenarioResult.value
-              }, 'Dynamic error code applied from scenario header');
-              break;
+            for (const scenario of scenarios) {
+              await this.applyScenario(scenario, responseConfig, request, reply);
+            }
           }
         }
         
@@ -586,6 +584,308 @@ class MockServer {
     }
     
     return false;
+  }
+
+  /**
+   * Check if a scenario is allowed for a specific mapping
+   */
+  isScenarioAllowed(scenarioHeader, mapping) {
+    // If no restrictions are defined, all scenarios are allowed
+    if (!mapping.allowedScenarios && !mapping.forbiddenScenarios) {
+      return true;
+    }
+    
+    // Split scenarios if multiple
+    const scenarios = scenarioHeader.split(',').map(s => s.trim());
+    
+    // Check allowed list (whitelist)
+    if (mapping.allowedScenarios) {
+      return scenarios.every(scenario => 
+        mapping.allowedScenarios.some(allowed => 
+          this.matchesScenarioPattern(scenario, allowed)
+        )
+      );
+    }
+    
+    // Check forbidden list (blacklist)
+    if (mapping.forbiddenScenarios) {
+      return scenarios.every(scenario => 
+        !mapping.forbiddenScenarios.some(forbidden => 
+          this.matchesScenarioPattern(scenario, forbidden)
+        )
+      );
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Check if a scenario matches a pattern
+   */
+  matchesScenarioPattern(scenario, pattern) {
+    // Exact match
+    if (scenario === pattern) return true;
+    
+    // Pattern matching (convert pattern to regex)
+    // Replace [ms], [percent], [field-name], etc. with regex
+    const regexPattern = pattern
+      .replace(/\[ms\]/g, '\\d+')
+      .replace(/\[percent\]/g, '\\d+')
+      .replace(/\[field-name\]/g, '[\\w-]+')
+      .replace(/\[header-name\]/g, '[\\w-]+')
+      .replace(/\[seconds\]/g, '\\d+')
+      .replace(/\[code\]/g, '\\d{3}');
+      
+    try {
+      const regex = new RegExp(`^${regexPattern}$`);
+      return regex.test(scenario);
+    } catch (e) {
+      // If pattern is invalid, do exact match
+      return scenario === pattern;
+    }
+  }
+
+  /**
+   * Apply a single scenario to the response configuration
+   */
+  async applyScenario(scenario, responseConfig, request, reply) {
+    switch (scenario.type) {
+      case 'timeout':
+      case 'slow':
+        if (scenario.isRequestTimeout) {
+          // Handle request timeout - delay then return 408
+          responseConfig.delay = scenario.value;
+          responseConfig.status = 408;
+          responseConfig.jsonBody = {
+            error: 'Request Timeout',
+            message: 'The server did not receive a complete request within the timeout period',
+            timestamp: "{{timestamp}}"
+          };
+        } else {
+          // Just add delay
+          responseConfig.delay = scenario.value;
+        }
+        this.logger.debug({
+          scenario: scenario,
+          delayMs: responseConfig.delay
+        }, `Dynamic ${scenario.type} applied`);
+        break;
+      
+      case 'network-error':
+        // Simulate network errors by closing connection abruptly
+        reply.raw.destroy();
+        this.logger.debug({
+          scenario: scenario,
+          error: scenario.value
+        }, 'Simulating network error');
+        return;
+      
+      case 'error':
+        responseConfig.status = scenario.value;
+        // Provide a default error body if none exists
+        if (!responseConfig.jsonBody && !responseConfig.body) {
+          responseConfig.jsonBody = {
+            error: `HTTP ${scenario.value}`,
+            message: this.getDefaultErrorMessage(scenario.value),
+            timestamp: "{{timestamp}}"
+          };
+        }
+        this.logger.debug({
+          scenario: scenario,
+          statusCode: scenario.value
+        }, 'Dynamic error code applied');
+        break;
+      
+      case 'auth':
+        await this.handleAuthScenario(scenario, responseConfig, request);
+        break;
+      
+      case 'data':
+        await this.handleDataScenario(scenario, responseConfig);
+        break;
+    }
+  }
+
+  /**
+   * Handle authentication scenarios
+   */
+  async handleAuthScenario(scenario, responseConfig, request) {
+    const { subtype, method, header, reason } = scenario;
+    
+    if (subtype === 'valid') {
+      // For valid auth scenarios, just return success
+      responseConfig.status = 200;
+      if (!responseConfig.jsonBody) {
+        responseConfig.jsonBody = {
+          authenticated: true,
+          method: method,
+          timestamp: "{{timestamp}}"
+        };
+      }
+    } else if (subtype === 'invalid') {
+      responseConfig.status = 401;
+      const messages = {
+        bearer: reason === 'expired' ? 'Bearer token has expired' : 
+                reason === 'malformed' ? 'Malformed bearer token' : 'Invalid bearer token',
+        basic: reason === 'format' ? 'Malformed basic auth header' : 'Invalid credentials',
+        apikey: `Invalid API key in ${header} header`,
+        jwt: reason === 'expired' ? 'JWT token has expired' : 'Invalid JWT token',
+        oauth2: 'Invalid OAuth2 access token'
+      };
+      responseConfig.jsonBody = {
+        error: 'Unauthorized',
+        message: messages[method] || 'Authentication failed',
+        timestamp: "{{timestamp}}"
+      };
+    } else if (subtype === 'missing') {
+      responseConfig.status = 401;
+      const messages = {
+        bearer: 'Missing Authorization header with Bearer token',
+        basic: 'Missing Basic authentication credentials',
+        apikey: `Missing required ${header} header`,
+        jwt: 'Missing JWT token',
+        oauth2: 'Missing OAuth2 access token'
+      };
+      responseConfig.jsonBody = {
+        error: 'Unauthorized',
+        message: messages[method] || 'No authentication provided',
+        timestamp: "{{timestamp}}"
+      };
+    }
+  }
+
+  /**
+   * Handle data response scenarios
+   */
+  async handleDataScenario(scenario, responseConfig) {
+    const { subtype, percent, field } = scenario;
+    
+    switch (subtype) {
+      case 'partial':
+        // Return only a percentage of data
+        if (responseConfig.jsonBody && Array.isArray(responseConfig.jsonBody)) {
+          const totalItems = responseConfig.jsonBody.length;
+          const itemsToReturn = Math.floor(totalItems * (percent / 100));
+          responseConfig.jsonBody = responseConfig.jsonBody.slice(0, itemsToReturn);
+        } else if (responseConfig.jsonBody && responseConfig.jsonBody.data && Array.isArray(responseConfig.jsonBody.data)) {
+          const totalItems = responseConfig.jsonBody.data.length;
+          const itemsToReturn = Math.floor(totalItems * (percent / 100));
+          responseConfig.jsonBody.data = responseConfig.jsonBody.data.slice(0, itemsToReturn);
+        }
+        break;
+      
+      case 'missing-field':
+        // Remove specified field from response
+        if (responseConfig.jsonBody) {
+          this.removeFieldFromObject(responseConfig.jsonBody, field);
+        }
+        break;
+      
+      case 'null-field':
+        // Set specified field to null
+        if (responseConfig.jsonBody) {
+          this.setFieldInObject(responseConfig.jsonBody, field, null);
+        }
+        break;
+      
+      case 'wrong-type':
+        // Change field to wrong type
+        if (responseConfig.jsonBody) {
+          const currentValue = this.getFieldFromObject(responseConfig.jsonBody, field);
+          if (currentValue !== undefined) {
+            // Convert to different type
+            const wrongValue = typeof currentValue === 'number' ? String(currentValue) :
+                             typeof currentValue === 'string' ? 123 :
+                             typeof currentValue === 'boolean' ? 'true' :
+                             Array.isArray(currentValue) ? {} : [];
+            this.setFieldInObject(responseConfig.jsonBody, field, wrongValue);
+          }
+        }
+        break;
+      
+      case 'corrupted':
+        // Return corrupted JSON
+        responseConfig.body = JSON.stringify(responseConfig.jsonBody || {}).slice(0, -5) + '{{corrupted';
+        delete responseConfig.jsonBody;
+        break;
+      
+      case 'extra-fields':
+        // Add extra unexpected fields
+        if (responseConfig.jsonBody) {
+          responseConfig.jsonBody._unexpected_field_1 = "unexpected value";
+          responseConfig.jsonBody._unexpected_field_2 = 12345;
+          responseConfig.jsonBody._debug_info = { internal: true, version: "2.0" };
+        }
+        break;
+      
+      case 'truncated':
+        // Truncate response at specified percentage
+        const jsonString = JSON.stringify(responseConfig.jsonBody || {});
+        const truncateAt = Math.floor(jsonString.length * (percent / 100));
+        responseConfig.body = jsonString.slice(0, truncateAt);
+        delete responseConfig.jsonBody;
+        break;
+    }
+  }
+
+  /**
+   * Helper to remove field from nested object
+   */
+  removeFieldFromObject(obj, fieldPath) {
+    const parts = fieldPath.split('.');
+    const lastPart = parts.pop();
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return;
+      }
+    }
+    
+    if (current && typeof current === 'object') {
+      delete current[lastPart];
+    }
+  }
+
+  /**
+   * Helper to set field in nested object
+   */
+  setFieldInObject(obj, fieldPath, value) {
+    const parts = fieldPath.split('.');
+    const lastPart = parts.pop();
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return;
+      }
+    }
+    
+    if (current && typeof current === 'object') {
+      current[lastPart] = value;
+    }
+  }
+
+  /**
+   * Helper to get field from nested object
+   */
+  getFieldFromObject(obj, fieldPath) {
+    const parts = fieldPath.split('.');
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return undefined;
+      }
+    }
+    
+    return current;
   }
 
   /**
@@ -610,6 +910,139 @@ class MockServer {
    * Register built-in endpoints
    */
   registerBuiltInEndpoints(server) {
+    // Root endpoint - API documentation
+    server.get('/', async (request, reply) => {
+      const correlationId = generateCorrelationId();
+      this.logger.info(createRequestLog(request.method, request.url, correlationId),
+        `→ [${correlationId}] ${request.method} ${request.url}`);
+      
+      const response = {
+        name: 'Mock Server',
+        version: '2.0.0',
+        description: 'Configuration-driven mock server supporting WebSocket and REST APIs',
+        endpoints: {
+          core: [
+            {
+              path: 'GET /',
+              description: 'This endpoint - Shows all available endpoints and documentation'
+            },
+            {
+              path: 'GET /health',
+              description: 'Health check endpoint - Returns server health status, active connections, and uptime'
+            },
+            {
+              path: 'GET /status',
+              description: 'Status endpoint - Shows all loaded mock configurations, available scenarios, and any failed mocks'
+            },
+            {
+              path: 'GET /schema/ws',
+              description: 'WebSocket schema endpoint - Returns JSON schema for WebSocket mock configuration'
+            },
+            {
+              path: 'GET /schema/api',
+              description: 'API schema endpoint - Returns JSON schema for REST API mock configuration'
+            }
+          ],
+          utilities: [
+            {
+              path: 'GET /status/:code',
+              description: 'Status code test endpoint - Returns any HTTP status code (100-599) for testing',
+              example: 'GET /status/404'
+            },
+            {
+              path: 'GET /timeout/:seconds',
+              description: 'Timeout test endpoint - Delays response by specified seconds (0-60) for timeout testing',
+              example: 'GET /timeout/5'
+            }
+          ],
+          websocket: [
+            {
+              path: 'ws://localhost:8080/ws',
+              description: 'WebSocket endpoint - Connect to receive scheduled messages and send messages for response rules'
+            }
+          ]
+        },
+        documentation: {
+          'X-Mock-Scenario': 'Use this header to simulate various test scenarios (delays, errors, auth issues, data problems)',
+          'Configuration': 'Place JSON mock files in the mocks/ directory',
+          'More Info': 'See /status for loaded mocks and available scenarios'
+        },
+        availableScenarios: {
+          description: 'Scenarios can be used with X-Mock-Scenario header on any endpoint (unless restricted)',
+          performance: {
+            'slow-response-[ms]': 'Delay response by specified milliseconds (e.g., slow-response-2000)',
+            'request-timeout-after-[ms]': 'Timeout after specified milliseconds with 408 error (e.g., request-timeout-after-5000)'
+          },
+          network: {
+            'connection-reset': 'Simulate TCP connection reset (ECONNRESET)',
+            'connection-refused': 'Simulate connection refused (ECONNREFUSED)',
+            'network-unreachable': 'Simulate network unreachable (ENETUNREACH)',
+            'dns-resolution-failure': 'Simulate DNS lookup failure (ENOTFOUND)'
+          },
+          errors: {
+            'error-400-bad-request': 'Return 400 Bad Request - malformed request',
+            'error-401-unauthorized': 'Return 401 Unauthorized - authentication required',
+            'error-403-forbidden': 'Return 403 Forbidden - insufficient permissions',
+            'error-404-not-found': 'Return 404 Not Found - resource does not exist',
+            'error-405-method-not-allowed': 'Return 405 Method Not Allowed - wrong HTTP method',
+            'error-409-conflict': 'Return 409 Conflict - resource conflict/duplicate',
+            'error-422-validation-failed': 'Return 422 Unprocessable Entity - validation errors',
+            'error-429-too-many-requests': 'Return 429 Too Many Requests - rate limit exceeded',
+            'error-500-internal': 'Return 500 Internal Server Error - server failure',
+            'error-502-bad-gateway': 'Return 502 Bad Gateway - upstream server error',
+            'error-503-service-unavailable': 'Return 503 Service Unavailable - service down',
+            'error-504-gateway-timeout': 'Return 504 Gateway Timeout - upstream timeout',
+            'error-507-insufficient-storage': 'Return 507 Insufficient Storage - storage full'
+          },
+          authentication: {
+            valid: {
+              'valid-auth-bearer': 'Simulate valid Bearer token authentication',
+              'valid-auth-basic': 'Simulate valid Basic authentication',
+              'valid-auth-apikey-[header-name]': 'Simulate valid API key in specified header (e.g., valid-auth-apikey-x-api-key)',
+              'valid-auth-jwt': 'Simulate valid JWT token',
+              'valid-auth-oauth2': 'Simulate valid OAuth2 token'
+            },
+            invalid: {
+              'invalid-auth-bearer': 'Simulate invalid Bearer token',
+              'invalid-auth-bearer-expired': 'Simulate expired Bearer token',
+              'invalid-auth-bearer-malformed': 'Simulate malformed Bearer token format',
+              'invalid-auth-basic': 'Simulate wrong username/password',
+              'invalid-auth-basic-format': 'Simulate malformed Basic auth header',
+              'invalid-auth-apikey-[header-name]': 'Simulate invalid API key in specified header',
+              'invalid-auth-jwt': 'Simulate invalid JWT signature',
+              'invalid-auth-jwt-expired': 'Simulate expired JWT token',
+              'invalid-auth-oauth2': 'Simulate invalid OAuth2 token'
+            },
+            missing: {
+              'missing-auth-bearer': 'Simulate missing Authorization header',
+              'missing-auth-basic': 'Simulate missing Basic auth credentials',
+              'missing-auth-apikey-[header-name]': 'Simulate missing API key header',
+              'missing-auth-jwt': 'Simulate missing JWT token',
+              'missing-auth-oauth2': 'Simulate missing OAuth2 token'
+            }
+          },
+          data: {
+            'partial-data-[percent]': 'Return only specified percentage of data (e.g., partial-data-50)',
+            'data-missing-field-[field-name]': 'Remove specified field from response (e.g., data-missing-field-id)',
+            'data-null-field-[field-name]': 'Set specified field to null (e.g., data-null-field-price)',
+            'data-wrong-type-field-[field-name]': 'Return wrong data type for field (e.g., data-wrong-type-field-count)',
+            'data-corrupted-json': 'Return malformed/corrupted JSON response',
+            'data-extra-fields': 'Add unexpected extra fields to response',
+            'data-truncated-[percent]': 'Truncate response at specified percentage (e.g., data-truncated-80)'
+          },
+          usage: {
+            single: 'X-Mock-Scenario: slow-response-2000',
+            multiple: 'X-Mock-Scenario: slow-response-2000,error-500-internal,partial-data-50',
+            restrictions: 'Some endpoints may restrict allowed scenarios - check /status for details'
+          }
+        }
+      };
+      
+      this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
+        `← [${correlationId}] 200 ${request.method} ${request.url}`);
+      return response;
+    });
+    
     // Health check endpoint
     server.get('/health', async (request, reply) => {
       const correlationId = generateCorrelationId();
@@ -631,11 +1064,27 @@ class MockServer {
       const correlationId = generateCorrelationId();
       this.logger.info(createRequestLog(request.method, request.url, correlationId),
         `→ [${correlationId}] ${request.method} ${request.url}`);
+      // Prepare API section with proper format
+      const apiSection = {};
+      Object.entries(this.loadedMocks.api).forEach(([key, value]) => {
+        if (value.endpoints) {
+          // New format with scenario info
+          apiSection[key] = value.endpoints;
+          if (value.mappingsWithScenarios && value.mappingsWithScenarios.length > 0) {
+            apiSection[`${key}_scenarios`] = value.mappingsWithScenarios;
+          }
+        } else {
+          // Old format (fallback)
+          apiSection[key] = value;
+        }
+      });
+      
       const status = {
         ws: this.loadedMocks.ws,
         api: {
-          ...this.loadedMocks.api,
+          ...apiSection,
           '_built-in': [
+            'GET /',
             'GET /health',
             'GET /status',
             'GET /status/:code',
@@ -643,7 +1092,8 @@ class MockServer {
             'GET /schema/ws',
             'GET /schema/api'
           ]
-        }
+        },
+        availableScenarios: getAllAvailableScenarios()
       };
       
       // Add failed configurations if any exist

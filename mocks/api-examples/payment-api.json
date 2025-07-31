@@ -1,0 +1,85 @@
+{
+  "name": "payment-api",
+  "type": "api",
+  "description": "Payment processing API with scenario restrictions for financial operations",
+  "mappings": [
+    {
+      "id": "create-payment",
+      "request": {
+        "method": "POST",
+        "urlPath": "/api/v1/payments"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "paymentId": "PAY-{{timestamp}}-{{random.uuid}}",
+          "status": "processing",
+          "amount": "{{request.body.amount}}",
+          "currency": "{{request.body.currency}}",
+          "createdAt": "{{timestamp}}"
+        }
+      },
+      "allowedScenarios": [
+        "slow-response-[ms]",
+        "error-400-bad-request",
+        "error-409-conflict",
+        "error-422-validation-failed",
+        "error-500-internal",
+        "error-503-service-unavailable",
+        "valid-auth-bearer",
+        "invalid-auth-bearer-expired"
+      ]
+    },
+    {
+      "id": "get-payment-status",
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/api/v1/payments/([A-Z0-9-]+)"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "paymentId": "{{request.params[0]}}",
+          "status": "completed",
+          "amount": 150.00,
+          "currency": "USD",
+          "processedAt": "{{timestamp}}"
+        }
+      },
+      "allowedScenarios": [
+        "slow-response-[ms]",
+        "error-404-not-found",
+        "error-500-internal",
+        "partial-data-[percent]",
+        "data-missing-field-processedAt"
+      ]
+    },
+    {
+      "id": "refund-payment",
+      "request": {
+        "method": "POST",
+        "urlPathPattern": "/api/v1/payments/([A-Z0-9-]+)/refund"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "refundId": "REF-{{timestamp}}",
+          "paymentId": "{{request.params[0]}}",
+          "status": "pending",
+          "refundAmount": "{{request.body.amount}}",
+          "reason": "{{request.body.reason}}"
+        }
+      },
+      "forbiddenScenarios": [
+        "connection-reset",
+        "connection-refused",
+        "network-unreachable",
+        "dns-resolution-failure",
+        "data-corrupted-json"
+      ]
+    }
+  ]
+}

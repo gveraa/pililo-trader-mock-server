@@ -1,0 +1,125 @@
+{
+  "name": "user-management-api",
+  "type": "api",
+  "description": "User management API with authentication scenario restrictions",
+  "mappings": [
+    {
+      "id": "user-registration",
+      "request": {
+        "method": "POST",
+        "urlPath": "/api/users/register",
+        "headers": {
+          "Content-Type": {
+            "equals": "application/json"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "jsonBody": {
+          "userId": "{{random.uuid}}",
+          "email": "{{request.body.email}}",
+          "username": "{{request.body.username}}",
+          "createdAt": "{{timestamp}}",
+          "emailVerified": false
+        }
+      },
+      "forbiddenScenarios": [
+        "valid-auth-bearer",
+        "valid-auth-jwt",
+        "invalid-auth-bearer",
+        "missing-auth-bearer"
+      ]
+    },
+    {
+      "id": "user-login",
+      "request": {
+        "method": "POST",
+        "urlPath": "/api/users/login",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.email",
+              "matches": ".+@.+"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "accessToken": "eyJ{{random.uuid}}",
+          "refreshToken": "ref_{{random.uuid}}",
+          "expiresIn": 3600,
+          "tokenType": "Bearer"
+        }
+      },
+      "allowedScenarios": [
+        "slow-response-[ms]",
+        "error-401-unauthorized",
+        "error-403-forbidden",
+        "error-429-too-many-requests",
+        "error-500-internal"
+      ]
+    },
+    {
+      "id": "get-user-profile",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/users/profile",
+        "headers": {
+          "Authorization": {
+            "matches": "Bearer .+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "userId": "{{random.uuid}}",
+          "email": "user@example.com",
+          "username": "testuser",
+          "profile": {
+            "firstName": "Test",
+            "lastName": "User",
+            "avatar": "https://api.example.com/avatars/{{random.uuid}}.jpg"
+          },
+          "preferences": {
+            "theme": "dark",
+            "notifications": true
+          }
+        }
+      },
+      "allowedScenarios": [
+        "slow-response-[ms]",
+        "valid-auth-bearer",
+        "invalid-auth-bearer",
+        "invalid-auth-bearer-expired",
+        "missing-auth-bearer",
+        "partial-data-[percent]",
+        "data-missing-field-[field-name]",
+        "data-null-field-[field-name]"
+      ]
+    },
+    {
+      "id": "update-user-profile",
+      "request": {
+        "method": "PUT",
+        "urlPath": "/api/users/profile",
+        "headers": {
+          "Authorization": {
+            "matches": "Bearer .+"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "message": "Profile updated successfully",
+          "updatedFields": ["{{request.body}}"],
+          "updatedAt": "{{timestamp}}"
+        }
+      }
+    }
+  ]
+}
