@@ -9,7 +9,7 @@ const ApiRequestMatcher = require('./modules/ApiRequestMatcher');
 const FastApiRequestMatcher = require('./modules/FastApiRequestMatcher');
 const ApiResponseHandler = require('./modules/ApiResponseHandler');
 const { generateCorrelationId, getMessagePreview, createRequestLog, createResponseLog } = require('./utils/fastLogger');
-const { extractPath, optimizeMapping, parseScenarioHeader, getAllAvailableScenarios } = require('./utils/performanceOptimizer');
+const { extractPath, optimizeMapping, parseScenarioHeader } = require('./utils/performanceOptimizer');
 
 class MockServer {
   constructor(logger) {
@@ -1081,19 +1081,7 @@ class MockServer {
       
       const status = {
         ws: this.loadedMocks.ws,
-        api: {
-          ...apiSection,
-          '_built-in': [
-            'GET /',
-            'GET /health',
-            'GET /status',
-            'GET /status/:code',
-            'GET /timeout/:seconds',
-            'GET /schema/ws',
-            'GET /schema/api'
-          ]
-        },
-        availableScenarios: getAllAvailableScenarios()
+        api: apiSection
       };
       
       // Add failed configurations if any exist
