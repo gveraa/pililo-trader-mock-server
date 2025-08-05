@@ -1,17 +1,7 @@
-const pino = require('pino');
 const MockServer = require('./MockServer');
+const { createLogger } = require('./utils/logger');
 
-// Create logger instance
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss Z',
-      ignore: 'pid,hostname'
-    }
-  }
-});
+const logger = createLogger();
 
 // Main execution
 async function main() {

@@ -8,6 +8,9 @@ const FastTemplateEngine = require('./modules/FastTemplateEngine');
 const ApiRequestMatcher = require('./modules/ApiRequestMatcher');
 const FastApiRequestMatcher = require('./modules/FastApiRequestMatcher');
 const ApiResponseHandler = require('./modules/ApiResponseHandler');
+const RequestLogger = require('./modules/RequestLogger');
+const MockMatcherDebugger = require('./modules/MockMatcherDebugger');
+const ScenarioValidator = require('./modules/ScenarioValidator');
 const { generateCorrelationId, getMessagePreview, createRequestLog, createResponseLog } = require('./utils/fastLogger');
 const { extractPath, optimizeMapping, parseScenarioHeader } = require('./utils/performanceOptimizer');
 
@@ -24,6 +27,11 @@ class MockServer {
     this.apiRequestMatcher = new ApiRequestMatcher(logger);
     this.fastApiMatcher = new FastApiRequestMatcher(logger);
     this.apiResponseHandler = new ApiResponseHandler(logger, this.templateEngine);
+    
+    // Initialize diagnostic tools
+    this.requestLogger = new RequestLogger(logger);
+    this.matcherDebugger = new MockMatcherDebugger(logger);
+    this.scenarioValidator = new ScenarioValidator(logger);
     
     // Server management
     this.activeServers = new Map();
@@ -226,22 +234,48 @@ class MockServer {
           config.mappings.forEach((mapping, index) => {
             const method = mapping.request.method || 'ANY';
             const path = mapping.request.urlPath || mapping.request.urlPathPattern || '/*';
+            const isPattern = !!mapping.request.urlPathPattern;
             
-            // Build endpoint string
-            let endpoint = `${method} ${path}`;
-            if (mapping.request.headers?.['X-Mock-Scenario']?.equals) {
-              endpoint += ` [scenario: ${mapping.request.headers['X-Mock-Scenario'].equals}]`;
-            }
-            if (mapping.id) {
-              endpoint += ` (${mapping.id})`;
+            // Build endpoint object with all matching conditions
+            const endpointObj = {
+              id: mapping.id || `mapping-${index}`,
+              method: method,
+              path: path,
+              pathType: isPattern ? 'pattern' : 'exact',
+              priority: mapping._priority || this.calculateMappingPriority(mapping)
+            };
+            
+            // Add required headers
+            if (mapping.request.headers) {
+              endpointObj.headers = {};
+              Object.entries(mapping.request.headers).forEach(([name, criteria]) => {
+                if (typeof criteria === 'string') {
+                  endpointObj.headers[name] = { equals: criteria };
+                } else {
+                  endpointObj.headers[name] = criteria;
+                }
+              });
             }
             
-            endpointsInfo.endpoints.push(endpoint);
+            // Add query parameters
+            if (mapping.request.queryParameters) {
+              endpointObj.queryParameters = mapping.request.queryParameters;
+            }
+            
+            // Add body patterns
+            if (mapping.request.bodyPatterns) {
+              endpointObj.bodyPatterns = mapping.request.bodyPatterns;
+            }
+            
+            // Add response status
+            endpointObj.responseStatus = mapping.response.status || 200;
+            
+            endpointsInfo.endpoints.push(endpointObj);
             
             // Track scenario restrictions if any
             if (mapping.allowedScenarios || mapping.forbiddenScenarios) {
               endpointsInfo.mappingsWithScenarios.push({
-                endpoint: endpoint,
+                endpoint: endpointObj,
                 allowedScenarios: mapping.allowedScenarios,
                 forbiddenScenarios: mapping.forbiddenScenarios
               });
@@ -525,10 +559,31 @@ class MockServer {
   async matchApiRequest(request, reply) {
     const method = request.method.toUpperCase();
     const urlPath = extractPath(request.url);
+    const startTime = Date.now();
     
     // Generate correlation ID
     const correlationId = generateCorrelationId();
     request.correlationId = correlationId;
+    
+    // Validate scenario header if present
+    const scenarioHeader = request.headers['x-mock-scenario'];
+    let scenarioValidation = null;
+    let parsedScenario = null;
+    
+    if (scenarioHeader) {
+      scenarioValidation = this.scenarioValidator.validateScenarioHeader(scenarioHeader, correlationId);
+      if (scenarioValidation.valid) {
+        parsedScenario = parseScenarioHeader(scenarioHeader);
+      }
+    }
+    
+    // Log incoming request with diagnostic information
+    this.requestLogger.logIncomingRequest(request, correlationId, parsedScenario);
+    
+    // Debug matching session (tests all mappings)
+    const matchingSession = this.matcherDebugger.debugMatchingSession(
+      correlationId, request, this.apiMappings, urlPath
+    );
     
     // Try each mapping in priority order
     for (const mapping of this.apiMappings) {
@@ -538,52 +593,115 @@ class MockServer {
         : await this.apiRequestMatcher.matches(request, mapping.request);
       
       if (matches) {
-        // Log simple request received with scenario
-        const scenario = request.headers['x-mock-scenario'];
-        this.logger.info(createRequestLog(request.method, request.url, correlationId, scenario), 
-          scenario ? `→ [${correlationId}] ${request.method} ${request.url} [${scenario}]` : `→ [${correlationId}] ${request.method} ${request.url}`);
+        // Log successful match with detailed information
+        const matchDetails = mapping._optimized 
+          ? this.fastApiMatcher.getMatchDetails(request, mapping)
+          : {
+              method: request.method,
+              path: request.url,
+              matchedPath: mapping.request.urlPath || mapping.request.urlPathPattern,
+              priority: this.calculateMappingPriority(mapping),
+              mappingId: mapping.id || mapping._mappingIndex,
+              configName: mapping._configName
+            };
         
-        this.logger.debug({
-          method: request.method,
-          path: request.url,
-          matchedPath: mapping.request.urlPath || mapping.request.urlPathPattern,
-          priority: this.calculateMappingPriority(mapping),
-          mappingId: mapping.id || mapping._mappingIndex,
-          configName: mapping._configName,
-          scenario: mapping.request.headers?.['X-Mock-Scenario']?.equals || 
-                   mapping.request.headers?.['X-Mock-Scenario']?.matches
-        }, 'API request matched with priority');
+        this.requestLogger.logMockMatch(correlationId, mapping, matchDetails);
         
         // Check for dynamic scenario patterns in header
         let responseConfig = { ...mapping.response };
-        const scenarioHeader = request.headers['x-mock-scenario'];
         
         // Check if scenarios are allowed for this mapping
-        if (scenarioHeader && this.isScenarioAllowed(scenarioHeader, mapping)) {
-          const scenarioResult = parseScenarioHeader(scenarioHeader);
-          
-          if (scenarioResult) {
+        if (scenarioHeader && scenarioValidation?.valid && this.isScenarioAllowed(scenarioHeader, mapping)) {
+          if (parsedScenario) {
             // Handle multiple scenarios
-            const scenarios = scenarioResult.type === 'multiple' ? scenarioResult.scenarios : [scenarioResult];
+            const scenarios = parsedScenario.type === 'multiple' ? parsedScenario.scenarios : [parsedScenario];
             
             for (const scenario of scenarios) {
-              await this.applyScenario(scenario, responseConfig, request, reply);
+              const modifications = await this.applyScenario(scenario, responseConfig, request, reply);
+              if (modifications) {
+                this.requestLogger.logScenarioApplication(correlationId, scenario, modifications);
+              }
             }
           }
+        } else if (scenarioHeader && !scenarioValidation?.valid) {
+          // Log scenario validation failure
+          this.logger.warn({
+            correlationId,
+            scenarioHeader,
+            validation: scenarioValidation
+          }, `Invalid scenario header ignored: ${scenarioHeader}`);
         }
         
         // Process response
-        await this.apiResponseHandler.sendResponse(reply, responseConfig, { request });
+        const processingTime = Date.now() - startTime;
+        await this.apiResponseHandler.sendResponse(reply, responseConfig, { request, correlationId });
         
-        // Log simple response sent with correlation ID
-        this.logger.info(createResponseLog(request.method, request.url, correlationId, responseConfig.status || 200),
-          `← [${correlationId}] ${responseConfig.status || 200} ${request.method} ${request.url}`);
+        // Log response details
+        this.requestLogger.logResponse(correlationId, responseConfig, processingTime);
         
         return true;
       }
     }
     
+    // No match found - check if we have partial matches
+    const processingTime = Date.now() - startTime;
+    
+    // Check if we had partial matches from the debug session
+    if (matchingSession && matchingSession.finalResult && matchingSession.finalResult.pathMatches > 0) {
+      // We have partial matches - return 400 with details
+      const partialMatches = matchingSession.finalResult.partialMatches;
+      const errorResponse = {
+        error: 'Bad Request',
+        message: 'Request matched a path but failed validation',
+        method: request.method,
+        path: request.url,
+        failures: partialMatches.map(pm => ({
+          endpoint: {
+            id: pm.endpoint.id,
+            method: pm.endpoint.method,
+            path: pm.endpoint.path
+          },
+          failedOn: pm.failedOn.check,
+          reason: pm.failedOn.reason,
+          requirements: this.getRequirementsForEndpoint(pm.endpoint)
+        }))
+      };
+      
+      reply.code(400).send(errorResponse);
+      return true; // We handled the response
+    }
+    
+    // No partial matches - truly no match found
+    this.logger.warn({
+      correlationId,
+      method: request.method,
+      url: request.url,
+      totalMappings: this.apiMappings.length,
+      processingTime
+    }, `No matching mock found for ${request.method} ${request.url}`);
+    
     return false;
+  }
+
+  /**
+   * Get requirements for an endpoint to show in error messages
+   */
+  getRequirementsForEndpoint(endpoint) {
+    const requirements = {};
+    
+    if (endpoint.headers) {
+      requirements.headers = endpoint.headers;
+    }
+    
+    if (endpoint.queryParameters) {
+      requirements.queryParameters = endpoint.queryParameters;
+    }
+    
+    if (endpoint.bodyPatterns) {
+      requirements.bodyPatterns = endpoint.bodyPatterns;
+    }
+    
+    return requirements;
   }
 
   /**
@@ -649,6 +767,17 @@ class MockServer {
    * Apply a single scenario to the response configuration
    */
   async applyScenario(scenario, responseConfig, request, reply) {
+    const modifications = {
+      status: null,
+      headers: {},
+      body: null,
+      delay: null
+    };
+
+    const originalStatus = responseConfig.status;
+    const originalDelay = responseConfig.delay;
+    const originalBody = responseConfig.jsonBody || responseConfig.body;
+
     switch (scenario.type) {
       case 'timeout':
       case 'slow':
@@ -661,9 +790,13 @@ class MockServer {
             message: 'The server did not receive a complete request within the timeout period',
             timestamp: "{{timestamp}}"
           };
+          modifications.delay = scenario.value;
+          modifications.status = 408;
+          modifications.body = true;
         } else {
           // Just add delay
           responseConfig.delay = scenario.value;
+          modifications.delay = scenario.value;
         }
         this.logger.debug({
           scenario: scenario,
@@ -678,10 +811,11 @@ class MockServer {
           scenario: scenario,
           error: scenario.value
         }, 'Simulating network error');
-        return;
+        return { ...modifications, networkError: scenario.value };
       
       case 'error':
         responseConfig.status = scenario.value;
+        modifications.status = scenario.value;
         // Provide a default error body if none exists
         if (!responseConfig.jsonBody && !responseConfig.body) {
           responseConfig.jsonBody = {
@@ -689,6 +823,7 @@ class MockServer {
             message: this.getDefaultErrorMessage(scenario.value),
             timestamp: "{{timestamp}}"
           };
+          modifications.body = true;
         }
         this.logger.debug({
           scenario: scenario,
@@ -697,13 +832,35 @@ class MockServer {
         break;
       
       case 'auth':
-        await this.handleAuthScenario(scenario, responseConfig, request);
+        const authMods = await this.handleAuthScenario(scenario, responseConfig, request);
+        Object.assign(modifications, authMods);
         break;
       
       case 'data':
-        await this.handleDataScenario(scenario, responseConfig);
+        const dataMods = await this.handleDataScenario(scenario, responseConfig);
+        Object.assign(modifications, dataMods);
         break;
     }
+
+    // Clean up modifications - only include what actually changed
+    const result = {};
+    if (modifications.status && modifications.status !== originalStatus) {
+      result.status = modifications.status;
+    }
+    if (modifications.delay && modifications.delay !== originalDelay) {
+      result.delay = modifications.delay;
+    }
+    if (modifications.body || (responseConfig.jsonBody !== originalBody || responseConfig.body !== originalBody)) {
+      result.body = true;
+    }
+    if (Object.keys(modifications.headers).length > 0) {
+      result.headers = modifications.headers;
+    }
+    if (modifications.networkError) {
+      result.networkError = modifications.networkError;
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
   }
 
   /**
@@ -711,19 +868,23 @@ class MockServer {
    */
   async handleAuthScenario(scenario, responseConfig, request) {
     const { subtype, method, header, reason } = scenario;
+    const modifications = { status: null, body: false };
     
     if (subtype === 'valid') {
       // For valid auth scenarios, just return success
       responseConfig.status = 200;
+      modifications.status = 200;
       if (!responseConfig.jsonBody) {
         responseConfig.jsonBody = {
           authenticated: true,
           method: method,
           timestamp: "{{timestamp}}"
         };
+        modifications.body = true;
       }
     } else if (subtype === 'invalid') {
       responseConfig.status = 401;
+      modifications.status = 401;
       const messages = {
         bearer: reason === 'expired' ? 'Bearer token has expired' : 
                 reason === 'malformed' ? 'Malformed bearer token' : 'Invalid bearer token',
@@ -737,8 +898,10 @@ class MockServer {
         message: messages[method] || 'Authentication failed',
         timestamp: "{{timestamp}}"
       };
+      modifications.body = true;
     } else if (subtype === 'missing') {
       responseConfig.status = 401;
+      modifications.status = 401;
       const messages = {
         bearer: 'Missing Authorization header with Bearer token',
         basic: 'Missing Basic authentication credentials',
@@ -751,7 +914,10 @@ class MockServer {
         message: messages[method] || 'No authentication provided',
         timestamp: "{{timestamp}}"
       };
+      modifications.body = true;
     }
+
+    return modifications;
   }
 
   /**
@@ -759,6 +925,7 @@ class MockServer {
    */
   async handleDataScenario(scenario, responseConfig) {
     const { subtype, percent, field } = scenario;
+    const modifications = { body: false };
     
     switch (subtype) {
       case 'partial':
@@ -767,10 +934,12 @@ class MockServer {
           const totalItems = responseConfig.jsonBody.length;
           const itemsToReturn = Math.floor(totalItems * (percent / 100));
           responseConfig.jsonBody = responseConfig.jsonBody.slice(0, itemsToReturn);
+          modifications.body = true;
         } else if (responseConfig.jsonBody && responseConfig.jsonBody.data && Array.isArray(responseConfig.jsonBody.data)) {
           const totalItems = responseConfig.jsonBody.data.length;
           const itemsToReturn = Math.floor(totalItems * (percent / 100));
           responseConfig.jsonBody.data = responseConfig.jsonBody.data.slice(0, itemsToReturn);
+          modifications.body = true;
         }
         break;
       
@@ -778,6 +947,7 @@ class MockServer {
         // Remove specified field from response
         if (responseConfig.jsonBody) {
           this.removeFieldFromObject(responseConfig.jsonBody, field);
+          modifications.body = true;
         }
         break;
       
@@ -785,6 +955,7 @@ class MockServer {
         // Set specified field to null
         if (responseConfig.jsonBody) {
           this.setFieldInObject(responseConfig.jsonBody, field, null);
+          modifications.body = true;
         }
         break;
       
@@ -799,6 +970,7 @@ class MockServer {
                              typeof currentValue === 'boolean' ? 'true' :
                              Array.isArray(currentValue) ? {} : [];
             this.setFieldInObject(responseConfig.jsonBody, field, wrongValue);
+            modifications.body = true;
           }
         }
         break;
@@ -807,6 +979,7 @@ class MockServer {
         // Return corrupted JSON
         responseConfig.body = JSON.stringify(responseConfig.jsonBody || {}).slice(0, -5) + '{{corrupted';
         delete responseConfig.jsonBody;
+        modifications.body = true;
         break;
       
       case 'extra-fields':
@@ -815,6 +988,7 @@ class MockServer {
           responseConfig.jsonBody._unexpected_field_1 = "unexpected value";
           responseConfig.jsonBody._unexpected_field_2 = 12345;
           responseConfig.jsonBody._debug_info = { internal: true, version: "2.0" };
+          modifications.body = true;
         }
         break;
       
@@ -824,8 +998,11 @@ class MockServer {
         const truncateAt = Math.floor(jsonString.length * (percent / 100));
         responseConfig.body = jsonString.slice(0, truncateAt);
         delete responseConfig.jsonBody;
+        modifications.body = true;
         break;
     }
+
+    return modifications;
   }
 
   /**

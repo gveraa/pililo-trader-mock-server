@@ -17,7 +17,18 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
     - [HTTP Error Scenarios](#http-error-scenarios)
     - [Combined Scenarios](#combined-scenarios)
 - [API Reference](#api-reference)
+  - [Built-in Endpoints](#built-in-endpoints)
+  - [WebSocket](#websocket)
+  - [REST API](#rest-api)
+  - [Request Matching Rules](#request-matching-rules)
+  - [Template Variables](#template-variables)
 - [Development](#development)
+  - [Mock Examples](#mock-examples)
+  - [Commands](#commands)
+  - [Environment Variables](#environment-variables)
+  - [Creating Mocks](#creating-mocks)
+  - [Priority System](#priority-system)
+  - [Diagnostic Logging](#diagnostic-logging)
 
 ## Quick Start
 
@@ -50,6 +61,7 @@ docker run -v $(pwd)/mocks:/app/mocks -p 8080:8080 mock-server
 - **Scenario testing** - Use X-Mock-Scenario header for different responses
 - **Template variables** - Dynamic timestamps, random values, request data
 - **Hot reload** - Auto-reload on config changes (dev mode)
+- **Diagnostic logging** - Comprehensive request/response logging with correlation IDs
 
 ## Configuration
 
@@ -510,6 +522,170 @@ curl -H "X-API-Key: invalid" -H "X-Mock-Scenario: invalid-auth-apikey-x-api-key,
 - **Request matching**: Method, path, headers, query, body
 - **Response options**: Status, headers, body, delay
 
+### Request Matching Rules
+
+The mock server evaluates requests against configured mappings using multiple criteria. ALL conditions must match for a mapping to be selected.
+
+#### **Method Matching**
+```json
+"request": {
+  "method": "POST"  // GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+}
+```
+- Case-insensitive exact match
+- Defaults to "GET" if not specified
+- Use "ANY" to match any method
+
+#### **URL Path Matching**
+
+**Exact Path** (Priority 1):
+```json
+"urlPath": "/api/users/profile"  // Must match exactly
+```
+
+**Pattern Path** (Priority 100+):
+```json
+"urlPathPattern": "/api/users/\\d+"  // Regex pattern
+```
+- Standard regex syntax
+- Escape special characters (`\\d` for `\d`)
+- Priority based on pattern complexity
+
+#### **Header Matching**
+
+**Exact Match**:
+```json
+"headers": {
+  "Content-Type": "application/json",  // Short form
+  "Accept": {
+    "equals": "application/json"      // Long form
+  }
+}
+```
+
+**Pattern Match**:
+```json
+"headers": {
+  "Authorization": {
+    "matches": "Bearer [A-Za-z0-9-_]+"  // Regex
+  }
+}
+```
+
+**Contains**:
+```json
+"headers": {
+  "User-Agent": {
+    "contains": "Mozilla"  // Substring
+  }
+}
+```
+
+**Absent Check**:
+```json
+"headers": {
+  "X-Debug": {
+    "absent": true  // Must NOT exist
+  }
+}
+```
+
+#### **Query Parameter Matching**
+
+```json
+"queryParameters": {
+  "status": "active",              // Exact match
+  "id": {
+    "equals": "123"                // Exact match (long form)
+  },
+  "page": {
+    "matches": "\\d+"              // Regex pattern
+  }
+}
+```
+
+#### **Body Matching**
+
+**Text Contains**:
+```json
+"bodyPatterns": [{
+  "contains": "username"  // Body must contain text
+}]
+```
+
+**Regex Pattern**:
+```json
+"bodyPatterns": [{
+  "matches": ".*\"email\":\\s*\".+@.+\".*"
+}]
+```
+
+**Exact JSON**:
+```json
+"bodyPatterns": [{
+  "equalToJson": {
+    "username": "testuser",
+    "active": true
+  }
+}]
+```
+
+**JSONPath**:
+```json
+"bodyPatterns": [{
+  "matchesJsonPath": {
+    "expression": "$.user.email",
+    "matches": ".+@.+\\..+"  // Email regex
+  }
+}]
+```
+
+#### **Complete Example**
+
+```json
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/orders",
+    "headers": {
+      "Content-Type": {
+        "equals": "application/json"
+      },
+      "Authorization": {
+        "matches": "Bearer .+"
+      }
+    },
+    "queryParameters": {
+      "userId": {
+        "matches": "\\d+"
+      }
+    },
+    "bodyPatterns": [{
+      "matchesJsonPath": {
+        "expression": "$.items[0].quantity",
+        "matches": "[1-9]\\d*"
+      }
+    }]
+  },
+  "response": {
+    "status": 201,
+    "jsonBody": {
+      "orderId": "{{random.uuid}}"
+    }
+  }
+}
+```
+
+#### **Matching Process**
+
+1. **Method Check** - HTTP method must match
+2. **Path Check** - URL path must match (exact or pattern)
+3. **Headers Check** - ALL header conditions must pass
+4. **Query Check** - ALL query parameter conditions must pass
+5. **Body Check** - ALL body patterns must match
+
+If any check fails, the mapping is skipped and the next one is evaluated.
+
 ### Template Variables
 
 | Variable | Description |
@@ -540,6 +716,9 @@ schema/               # JSON schemas
 ├── mock-base-schema.json
 ├── websocket-mock-schema.json
 └── api-mock-schema.json
+
+logs/                 # Log files (when ENABLE_FILE_LOGGING=true)
+└── mock-server.log   # Current log file
 ```
 
 ### Mock Examples
@@ -561,6 +740,10 @@ yarn validate:watch   # Watch mode validation
 
 - `MOCKS_DIR` - Mock files directory (default: `mocks`)
 - `NODE_ENV` - Environment (development/production)
+- `ENABLE_FILE_LOGGING` - Enable file logging to `./logs/mock-server.log` (default: `false`)
+  - Set to `true` to enable file logging with rotation
+  - Log files: `mock-server.log` (5MB max), `.log.1`, `.log.2` (3 files total)
+  - Includes comprehensive diagnostic information for troubleshooting
 
 ### Creating Mocks
 
@@ -583,3 +766,60 @@ Example:
 /api/users/\d+    (pattern)  → Priority ~107
 /api/.*           (wildcard) → Priority ~200
 ```
+
+### Diagnostic Logging
+
+The mock server includes comprehensive diagnostic logging to help troubleshoot test failures:
+
+#### **Request Logger**
+- Logs all incoming requests with correlation IDs
+- Tracks matched mock configurations and response details  
+- Records scenario processing and modifications applied
+- Shows response timing and status codes
+
+#### **Mock Matcher Debugger**
+- Shows detailed analysis of why requests matched or didn't match specific mocks
+- Includes priority evaluation and matching criteria breakdown
+- Provides failure reasons with helpful suggestions
+- Records performance metrics for the matching process
+
+#### **Scenario Validator**  
+- Validates X-Mock-Scenario header syntax
+- Provides detailed error messages for invalid scenarios
+- Suggests corrections for common mistakes
+
+#### **Log Output Examples**
+
+Console output (default):
+```
+[12:34:56 UTC] INFO: → [req-abc123] GET /api/users
+[12:34:56 UTC] INFO: ✓ [req-abc123] Matched: user-api (priority: 1)
+[12:34:56 UTC] INFO: ← [req-abc123] ✅ 200 (25ms)
+```
+
+When no match found:
+```
+[12:34:56 UTC] WARN: ❌ [req-xyz789] No match found (15 mappings tested, path most common failure)
+```
+
+Invalid scenario header:
+```
+[12:34:56 UTC] WARN: ❌ Invalid scenario header: slow-response-abc
+    suggestions: ["Use format: slow-response-[milliseconds], e.g., slow-response-2000"]
+```
+
+#### **File Logging**
+
+Enable file logging for persistent diagnostic information:
+
+```bash
+# Enable file logging
+ENABLE_FILE_LOGGING=true yarn start
+
+# Logs will be written to:
+# ./logs/mock-server.log (current)
+# ./logs/mock-server.log.1 (after rotation)
+# ./logs/mock-server.log.2 (oldest)
+```
+
+File logs contain the same diagnostic information in JSON format for easier parsing and analysis.

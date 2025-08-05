@@ -1,20 +1,11 @@
 #!/usr/bin/env node
 
-const pino = require('pino');
 const ConfigurationManager = require('./modules/ConfigurationManager');
+const { createLogger } = require('./utils/logger');
 const path = require('path');
 
 // Create logger for validation
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss Z',
-      ignore: 'pid,hostname'
-    }
-  }
-});
+const logger = createLogger();
 
 /**
  * Validate all configuration files

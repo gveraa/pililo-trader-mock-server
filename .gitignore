@@ -7,4 +7,5 @@ CLAUDE.md
 
 # Log files
 *.log
-logs/
+logs/*.log
+logs/*.log.*
