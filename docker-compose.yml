@@ -10,6 +10,7 @@ services:
     environment:
       - NODE_ENV=production
       - MOCKS_DIR=mocks
+      - ENABLE_FILE_LOGGING=true
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('Health check passed')"]

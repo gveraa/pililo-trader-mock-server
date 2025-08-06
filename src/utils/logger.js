@@ -17,31 +17,43 @@ function createLogger() {
   const enableFileLogging = process.env.ENABLE_FILE_LOGGING === 'true';
   
   if (enableFileLogging) {
-    // File logging with rotation
-    const logFile = path.join(process.cwd(), 'logs', 'mock-server.log');
-    const destination = pino.destination({
-      dest: logFile,
-      maxLength: 5 * 1024 * 1024, // 5MB
-      maxFiles: 3,
-      mkdir: true // Create directory if it doesn't exist
-    });
+    // File logging without rotation for now
+    const fs = require('fs');
+    const logDir = path.join(process.cwd(), 'logs');
+    const logFile = path.join(logDir, 'mock-server.log');
+    
+    // Ensure logs directory exists
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    
+    // Ensure the log file doesn't exist as a directory
+    try {
+      const stats = fs.statSync(logFile);
+      if (stats.isDirectory()) {
+        fs.rmSync(logFile, { recursive: true, force: true });
+      }
+    } catch (err) {
+      // File doesn't exist, which is fine
+    }
     
     const logger = pino({
-      timestamp: pino.stdTimeFunctions.isoTime,
-      formatters: {
-        level: (label) => {
-          return { level: label };
+      transport: {
+        target: 'pino-pretty',
+        options: {
+          colorize: false,  // No colors in file
+          translateTime: 'HH:MM:ss Z',
+          ignore: 'pid,hostname',
+          destination: logFile
         }
       }
-    }, destination);
+    });
     
     // Log startup info about file logging
     logger.info({
       logFile,
-      maxSize: '5MB',
-      maxFiles: 3,
-      rotation: true
-    }, 'File logging enabled with rotation');
+      output: 'file'
+    }, 'File logging enabled');
     
     return logger;
   } else {

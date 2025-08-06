@@ -350,12 +350,7 @@ class MockServer {
     
     // Add default handler for unmatched routes
     server.setNotFoundHandler(async (request, reply) => {
-      this.logger.warn({
-        method: request.method,
-        url: request.url,
-        headers: request.headers
-      }, 'No API mapping matched request');
-      
+      // Logging is already handled by RequestLogger and MockMatcherDebugger
       reply.code(404).send({
         error: 'Not Found',
         message: 'No mock mapping found for this request',
@@ -672,14 +667,7 @@ class MockServer {
     }
     
     // No partial matches - truly no match found
-    this.logger.warn({
-      correlationId,
-      method: request.method,
-      url: request.url,
-      totalMappings: this.apiMappings.length,
-      processingTime
-    }, `No matching mock found for ${request.method} ${request.url}`);
-    
+    // Logging is already handled by RequestLogger and MockMatcherDebugger
     return false;
   }
 
