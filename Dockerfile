@@ -15,7 +15,8 @@ COPY src/ ./src/
 COPY schema/ ./schema/
 
 # Create directory for mock configurations
-RUN mkdir -p /app/mocks
+RUN mkdir -p /app/mocks && \
+    mkdir -p /app/logs
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
@@ -23,6 +24,9 @@ RUN addgroup -g 1001 -S nodejs && \
 
 # Change ownership of app directory
 RUN chown -R nodejs:nodejs /app
+
+# Ensure logs directory has write permissions
+RUN chmod -R 755 /app/logs
 
 # Switch to non-root user
 USER nodejs
