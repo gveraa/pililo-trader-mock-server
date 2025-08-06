@@ -500,11 +500,30 @@ Note: Cannot use both `allowedScenarios` and `forbiddenScenarios` in the same ma
 
 ### X-Mock-Scenario Header
 
-Use dynamic patterns to test different scenarios without changing configuration. The X-Mock-Scenario header allows you to simulate various conditions including network issues, authentication problems, data quality issues, and HTTP errors.
+**Important:** The X-Mock-Scenario header is sent by the **client** in their HTTP requests to trigger different mock behaviors. This header is NOT defined in the JSON mock configuration files.
+
+The X-Mock-Scenario header allows clients to dynamically request different response scenarios from the mock server without changing any configuration files. When a client includes this header in their request, the mock server will simulate various conditions like network issues, authentication problems, data quality issues, and HTTP errors.
+
+**How it works:**
+1. Client sends a request with the `X-Mock-Scenario` header
+2. Mock server reads the header value and modifies its response accordingly
+3. The response simulates the requested scenario (delay, error, partial data, etc.)
+
+**Example client request:**
+```bash
+# Client requests a slow response scenario
+curl -H "X-Mock-Scenario: slow-response-2000" http://localhost:8080/api/data
+
+# Client requests an authentication error scenario  
+curl -H "X-Mock-Scenario: invalid-auth-bearer" http://localhost:8080/api/secure
+
+# Client requests multiple scenarios
+curl -H "X-Mock-Scenario: slow-response-1000,partial-data-50" http://localhost:8080/api/users
+```
 
 ### Scenario Restrictions
 
-API mocks can restrict which scenarios they accept using `allowedScenarios` or `forbiddenScenarios` (but not both):
+While the X-Mock-Scenario header is sent by clients, the mock server configuration files can restrict which scenarios are allowed for each endpoint. This is done using `allowedScenarios` or `forbiddenScenarios` properties in the JSON mock files (but not both):
 
 ```json
 {
@@ -533,6 +552,13 @@ API mocks can restrict which scenarios they accept using `allowedScenarios` or `
 - If neither is specified, all scenarios are allowed
 - Cannot use both in the same mapping (validation will fail)
 
+**Key Points:**
+- X-Mock-Scenario is a **request header** sent by the client
+- It is **NOT** configured in JSON mock files
+- The mock server reads this header and modifies its response
+- Multiple scenarios can be combined with commas
+- Mock files can restrict allowed scenarios using `allowedScenarios`/`forbiddenScenarios`
+
 **Pattern Placeholders:**
 - `[ms]` - Milliseconds value
 - `[percent]` - Percentage value (0-100)
@@ -542,9 +568,12 @@ API mocks can restrict which scenarios they accept using `allowedScenarios` or `
 
 ### Performance & Network Scenarios
 
+The following examples show how **clients** can request different performance and network scenarios by including the X-Mock-Scenario header in their requests.
+
 #### Response Delays
 **Pattern:** `slow-response-[ms]` where `[ms]` is any millisecond value  
 **Purpose:** Test how your application handles slow API responses and loading states
+**Client Request Example:**
 ```bash
 curl -H "X-Mock-Scenario: slow-response-3000" http://localhost:8080/api/balance
 ```
@@ -553,6 +582,7 @@ curl -H "X-Mock-Scenario: slow-response-3000" http://localhost:8080/api/balance
 #### Timeouts
 **Pattern:** `request-timeout-after-[ms]` where `[ms]` is any millisecond value  
 **Purpose:** Test application behavior when requests exceed timeout limits
+**Client Request Example:**
 ```bash
 curl -H "X-Mock-Scenario: request-timeout-after-5000" http://localhost:8080/api/trade
 ```
@@ -560,6 +590,7 @@ curl -H "X-Mock-Scenario: request-timeout-after-5000" http://localhost:8080/api/
 
 #### Network Issues
 **Purpose:** Simulate various network connectivity problems
+**Client Request Examples:**
 
 ```bash
 curl -H "X-Mock-Scenario: connection-reset" http://localhost:8080/api/data
@@ -583,8 +614,11 @@ curl -H "X-Mock-Scenario: dns-resolution-failure" http://localhost:8080/api/ping
 
 ### Authentication Scenarios
 
+The following examples demonstrate how **clients** can test various authentication scenarios by including the X-Mock-Scenario header in their requests.
+
 #### Valid Authentication
 **Purpose:** Test successful authentication flows and authorized access
+**Client Request Examples:**
 
 ```bash
 curl -H "Authorization: Bearer valid-token" -H "X-Mock-Scenario: valid-auth-bearer" http://localhost:8080/api/profile
@@ -613,6 +647,7 @@ curl -H "X-Mock-Scenario: valid-auth-oauth2" http://localhost:8080/api/me
 
 #### Invalid Authentication
 **Purpose:** Test security handling of invalid credentials and malformed auth data
+**Client Request Examples:**
 
 ```bash
 curl -H "Authorization: Bearer invalid" -H "X-Mock-Scenario: invalid-auth-bearer" http://localhost:8080/api/secure
@@ -661,6 +696,7 @@ curl -H "X-Mock-Scenario: invalid-auth-oauth2" http://localhost:8080/api/me
 
 #### Missing Authentication
 **Purpose:** Test behavior when required authentication is completely absent
+**Client Request Examples:**
 
 ```bash
 curl -H "X-Mock-Scenario: missing-auth-bearer" http://localhost:8080/api/secure
@@ -689,9 +725,12 @@ curl -H "X-Mock-Scenario: missing-auth-oauth2" http://localhost:8080/api/profile
 
 ### Data Response Scenarios
 
+The following examples show how **clients** can request various data quality scenarios to test application robustness.
+
 #### Partial Data
 **Pattern:** `partial-data-[percent]` where `[percent]` is any percentage value (0-100)  
 **Purpose:** Test handling of incomplete data responses and pagination
+**Client Request Example:**
 
 ```bash
 curl -H "X-Mock-Scenario: partial-data-50" http://localhost:8080/api/transactions
@@ -700,6 +739,7 @@ curl -H "X-Mock-Scenario: partial-data-50" http://localhost:8080/api/transaction
 
 #### Data Quality Issues
 **Purpose:** Test robustness against various data integrity problems
+**Client Request Examples:**
 
 ```bash
 curl -H "X-Mock-Scenario: data-missing-field-id" http://localhost:8080/api/users
@@ -733,8 +773,11 @@ curl -H "X-Mock-Scenario: data-truncated-80" http://localhost:8080/api/report
 
 ### HTTP Error Scenarios
 
+The following examples demonstrate how **clients** can trigger various HTTP error responses to test error handling.
+
 #### Client Errors (4xx)
 **Purpose:** Test handling of client-side errors and user input validation
+**Client Request Examples:**
 
 ```bash
 curl -H "X-Mock-Scenario: error-400-bad-request" http://localhost:8080/api/submit
@@ -778,6 +821,7 @@ curl -H "X-Mock-Scenario: error-429-too-many-requests" http://localhost:8080/api
 
 #### Server Errors (5xx)
 **Purpose:** Test handling of server-side failures and service degradation
+**Client Request Examples:**
 
 ```bash
 curl -H "X-Mock-Scenario: error-500-internal" http://localhost:8080/api/process
@@ -807,7 +851,7 @@ curl -H "X-Mock-Scenario: error-507-insufficient-storage" http://localhost:8080/
 #### Combined Scenarios
 
 ##### Multiple Scenarios
-**Purpose:** Test complex real-world conditions where multiple issues occur simultaneously. Combine scenarios with commas to simulate realistic production issues.
+**Purpose:** Test complex real-world conditions where multiple issues occur simultaneously. Clients can combine multiple scenarios by separating them with commas in the X-Mock-Scenario header value.
 
 ##### 1. Slow Network with Partial Data Loss
 ```bash
