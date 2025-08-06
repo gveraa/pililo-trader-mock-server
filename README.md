@@ -22,6 +22,15 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
       - [Body Matching](#body-matching)
       - [Complete Example](#complete-example)
       - [Matching Order](#matching-order)
+    - [Response Options](#response-options)
+      - [Status Code](#status-code-required)
+      - [Response Headers](#response-headers)
+      - [Response Body Options](#response-body-options)
+      - [Response Delay](#response-delay)
+      - [Complete Response Example](#complete-response-example)
+    - [Mapping Configuration Options](#mapping-configuration-options)
+      - [Enable/Disable Mappings](#enabledisable-mappings)
+      - [Scenario Restrictions](#scenario-restrictions)
   - [X-Mock-Scenario Header](#x-mock-scenario-header)
     - [Scenario Restrictions](#scenario-restrictions)
     - [Performance & Network Scenarios](#performance--network-scenarios)
@@ -171,7 +180,7 @@ Matches based on JSONPath expressions in JSON messages:
   2. Patterns (`urlPathPattern`)
   3. Wildcards (`.*`)
 - **Request matching**: Method, path, headers, query, body
-- **Response options**: Status, headers, body, delay
+- **Response options**: Status, headers, body (text/json/base64), delay, enable/disable
 
 **Example configuration:**
 ```json
@@ -351,6 +360,143 @@ The mock server evaluates requests against configured mappings using multiple cr
 5. **Body Check** - ALL body patterns must match
 
 If any check fails, the mapping is skipped and the next one is evaluated.
+
+#### Response Options
+
+Configure how the mock server responds when a request matches:
+
+##### **Status Code** (required)
+```json
+"response": {
+  "status": 200  // Any HTTP status code (100-599)
+}
+```
+
+##### **Response Headers**
+```json
+"response": {
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Custom-Header": "value",
+    "Cache-Control": "no-cache"
+  }
+}
+```
+
+##### **Response Body Options**
+
+**Plain Text Body**:
+```json
+"response": {
+  "body": "Hello World"  // Plain text response
+}
+```
+
+**JSON Body**:
+```json
+"response": {
+  "jsonBody": {
+    "message": "Success",
+    "data": [1, 2, 3],
+    "timestamp": "{{timestamp}}"  // Supports template variables
+  }
+}
+```
+
+**Binary/Base64 Body**:
+```json
+"response": {
+  "base64Body": "SGVsbG8gV29ybGQ="  // Base64 encoded content
+}
+```
+
+Note: Use only one body type (`body`, `jsonBody`, or `base64Body`) per response.
+
+##### **Response Delay**
+```json
+"response": {
+  "delay": 2000,  // Wait 2 seconds before responding
+  "status": 200,
+  "jsonBody": { "message": "Slow response" }
+}
+```
+
+##### **Complete Response Example**
+```json
+{
+  "mappings": [{
+    "id": "slow-api-endpoint",
+    "request": {
+      "method": "POST",
+      "urlPath": "/api/process"
+    },
+    "response": {
+      "status": 201,
+      "headers": {
+        "Content-Type": "application/json",
+        "Location": "/api/process/12345"
+      },
+      "jsonBody": {
+        "id": "12345",
+        "status": "processing",
+        "estimatedTime": 30
+      },
+      "delay": 1500  // 1.5 second delay
+    }
+  }]
+}
+```
+
+#### Mapping Configuration Options
+
+##### **Enable/Disable Mappings**
+```json
+{
+  "mappings": [{
+    "id": "disabled-endpoint",
+    "enabled": false,  // This mapping is inactive
+    "request": { ... },
+    "response": { ... }
+  }]
+}
+```
+
+##### **Scenario Restrictions**
+
+Control which X-Mock-Scenario patterns a mapping accepts:
+
+**Allow List** (whitelist):
+```json
+{
+  "mappings": [{
+    "id": "payment-endpoint",
+    "allowedScenarios": [
+      "slow-response-[ms]",
+      "error-500-internal",
+      "valid-auth-bearer"
+    ],
+    "request": { ... },
+    "response": { ... }
+  }]
+}
+```
+
+**Forbidden List** (blacklist):
+```json
+{
+  "mappings": [{
+    "id": "health-check",
+    "forbiddenScenarios": [
+      "error-*",  // Block all error scenarios
+      "slow-response-*"  // Block all slow responses
+    ],
+    "request": { ... },
+    "response": { ... }
+  }]
+}
+```
+
+Note: Cannot use both `allowedScenarios` and `forbiddenScenarios` in the same mapping.
 
 ### X-Mock-Scenario Header
 
@@ -790,9 +936,8 @@ src/                               # Source code
     └── performanceOptimizer.js   # Server optimization helpers
 
 schema/                            # JSON schema definitions
-├── mock-base-schema.json         # Base schema for all mocks
-├── api-mock-schema.json          # REST API mock schema
-└── websocket-mock-schema.json    # WebSocket mock schema
+├── api-mock-schema.json          # REST API mock schema with validation rules
+└── websocket-mock-schema.json    # WebSocket mock schema with validation rules
 
 logs/                              # Log files directory
 ├── .gitkeep                       # Ensures directory in git

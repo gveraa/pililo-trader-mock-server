@@ -15,30 +15,24 @@ class ConfigurationManager {
 
   /**
    * Load JSON schema for configuration validation
-   * @param {string} schemaPath - Path to the schema file
    */
-  async loadSchema(schemaPath = null) {
+  async loadSchema() {
     try {
-      // Load base schema and referenced schemas
-      const baseSchemaPath = schemaPath || path.join(__dirname, '../../schema/mock-base-schema.json');
+      // Load schemas
       const wsSchemaPath = path.join(__dirname, '../../schema/websocket-mock-schema.json');
       const apiSchemaPath = path.join(__dirname, '../../schema/api-mock-schema.json');
       
       // Load all schemas
-      const baseSchemaContent = await fs.readFile(baseSchemaPath, 'utf8');
       const wsSchemaContent = await fs.readFile(wsSchemaPath, 'utf8');
       const apiSchemaContent = await fs.readFile(apiSchemaPath, 'utf8');
       
-      this.baseSchema = JSON.parse(baseSchemaContent);
       this.wsSchema = JSON.parse(wsSchemaContent);
       this.apiSchema = JSON.parse(apiSchemaContent);
       
-      // Add schemas to AJV
-      this.ajv.addSchema(this.wsSchema, 'websocket-mock-schema.json');
-      this.ajv.addSchema(this.apiSchema, 'api-mock-schema.json');
+      // Compile validators for each schema
+      this.wsValidate = this.ajv.compile(this.wsSchema);
+      this.apiValidate = this.ajv.compile(this.apiSchema);
       
-      // Compile base schema
-      this.validate = this.ajv.compile(this.baseSchema);
       // Schemas loaded successfully
     } catch (error) {
       this.logger.error({ error: error.message }, 'Failed to load schemas');
@@ -258,15 +252,36 @@ class ConfigurationManager {
    * @returns {Object} Validation result
    */
   validateConfiguration(config, skipPortConflictCheck = false) {
-    if (!this.validate) {
+    // Check if config has required type field
+    if (!config.type) {
+      return {
+        isValid: false,
+        errors: ['Missing required field: type']
+      };
+    }
+
+    // Select appropriate validator based on type
+    let validator;
+    if (config.type === 'ws') {
+      validator = this.wsValidate;
+    } else if (config.type === 'api') {
+      validator = this.apiValidate;
+    } else {
+      return {
+        isValid: false,
+        errors: [`Invalid type: ${config.type}. Must be 'ws' or 'api'`]
+      };
+    }
+
+    if (!validator) {
       return {
         isValid: false,
         errors: ['Schema not loaded']
       };
     }
 
-    const isValid = this.validate(config);
-    const errors = this.validate.errors || [];
+    const isValid = validator(config);
+    const errors = validator.errors || [];
 
     // Additional semantic validation
     const semanticErrors = this.performSemanticValidation(config, skipPortConflictCheck);
