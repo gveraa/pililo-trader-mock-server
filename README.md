@@ -741,8 +741,8 @@ yarn validate:watch   # Watch mode validation
 - `MOCKS_DIR` - Mock files directory (default: `mocks`)
 - `NODE_ENV` - Environment (development/production)
 - `ENABLE_FILE_LOGGING` - Enable file logging to `./logs/mock-server.log` (default: `false`)
-  - Set to `true` to enable file logging with rotation
-  - Log files: `mock-server.log` (5MB max), `.log.1`, `.log.2` (3 files total)
+  - Set to `true` to enable file logging
+  - Log file is overwritten on each startup (no rotation)
   - Includes comprehensive diagnostic information for troubleshooting
 
 ### Creating Mocks

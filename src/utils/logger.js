@@ -9,8 +9,7 @@ const path = require('path');
  * 
  * File Logging Features:
  * - Fixed path: ./logs/mock-server.log
- * - Max file size: 5MB before rotation
- * - Max files: 3 (current + 2 rotated)
+ * - File is overwritten on each startup (no rotation)
  * - Auto-creates directory if needed
  */
 function createLogger() {
@@ -36,6 +35,9 @@ function createLogger() {
     } catch (err) {
       // File doesn't exist, which is fine
     }
+    
+    // Clear/create the log file (overwrite mode)
+    fs.writeFileSync(logFile, '', { flag: 'w' });
     
     const logger = pino({
       transport: {

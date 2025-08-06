@@ -16,7 +16,7 @@ COPY schema/ ./schema/
 
 # Create directory for mock configurations
 RUN mkdir -p /app/mocks && \
-    mkdir -p /app/logs && touch /app/logs/mock-server.log
+    mkdir -p /app/logs
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
