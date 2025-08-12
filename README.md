@@ -8,12 +8,14 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
 - [Features](#features)
 - [How to create mocks?](#how-to-create-mocks)
   - [WebSocket](#websocket)
+    - [WebSocket Schema](#websocket-schema)
     - [Matchers](#matchers)
       - [Exact Match](#exact-match)
       - [Contains Match](#contains-match)
       - [Regex Match](#regex-match)
       - [JSONPath Match](#jsonpath-match)
   - [REST API](#rest-api)
+    - [REST API Schema](#rest-api-schema)
     - [Request Matching Rules](#request-matching-rules)
       - [Method Matching](#method-matching)
       - [URL Path Matching](#url-path-matching)
@@ -64,7 +66,7 @@ yarn dev
 yarn validate
 ```
 
-### Docker
+## Docker
 
 ```bash
 docker build -t mock-server .
@@ -124,11 +126,135 @@ docker run -v $(pwd)/mocks:/app/mocks -p 8080:8080 mock-server
 }
 ```
 
-#### Matchers
+### WebSocket Schema
+
+The WebSocket mock configuration follows a JSON schema that defines the structure and validation rules for WebSocket mocks. Understanding this schema helps developers create valid mock configurations.
+
+📄 **Schema File:** [`schema/websocket-mock-schema.json`](schema/websocket-mock-schema.json)
+
+#### Schema Properties
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | ✓ | Name identifier for this mock configuration |
+| `type` | string | ✓ | Must be "ws" for WebSocket mocks |
+| `description` | string | | Optional description of what this mock simulates |
+| `scheduledMessages` | array | | Messages sent automatically on intervals |
+| `responseRules` | array | | Rules for responding to incoming messages |
+| `connectionBehavior` | object | | Behavior settings for connections |
+
+#### Scheduled Messages Structure
+
+Each scheduled message in the `scheduledMessages` array has:
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `id` | string | ✓ | | Unique identifier for this scheduled message |
+| `interval` | integer | ✓ | | Interval in milliseconds between sends (min: 100) |
+| `message` | object | ✓ | | The message payload to send |
+| `enabled` | boolean | | true | Whether this scheduled message is active |
+| `startDelay` | integer | | 0 | Initial delay before first send (ms) |
+
+#### Response Rules Structure
+
+Each response rule in the `responseRules` array has:
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `id` | string | ✓ | | Unique identifier for this response rule |
+| `matcher` | object | ✓ | | Matching criteria for incoming messages |
+| `response` | object | ✓ | | Response configuration |
+| `enabled` | boolean | | true | Whether this response rule is active |
+
+**Matcher Object:**
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `type` | string | ✓ | Type of matching: "exact", "contains", "regex", or "jsonPath" |
+| `value` | any | ✓* | Value to match against (not required for jsonPath) |
+| `path` | string | | JSONPath expression (only for jsonPath type) |
+
+**Response Object:**
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `message` | any | ✓ | | Response message payload |
+| `delay` | integer | | 0 | Delay before sending response (ms) |
+| `multiple` | boolean | | false | Whether this rule can match multiple times |
+
+#### Connection Behavior Structure
+
+The `connectionBehavior` object configures:
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `maxConnections` | integer | 100 | Maximum concurrent connections (min: 1) |
+| `onConnect` | object | | Message to send when client connects |
+| `onDisconnect` | object | | Action to perform when client disconnects |
+
+**onConnect Object:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `message` | any | | Welcome message payload |
+| `delay` | integer | 0 | Delay before sending welcome message (ms) |
+
+**onDisconnect Object:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `logLevel` | string | "info" | Log level: "trace", "debug", "info", "warn", "error" |
+
+#### Complete WebSocket Schema Example
+
+```json
+{
+  "name": "full-featured-ws",
+  "type": "ws",
+  "description": "Complete WebSocket mock with all features",
+  "scheduledMessages": [
+    {
+      "id": "heartbeat",
+      "interval": 30000,
+      "message": { "type": "heartbeat", "timestamp": "{{timestamp}}" },
+      "enabled": true,
+      "startDelay": 1000
+    }
+  ],
+  "responseRules": [
+    {
+      "id": "auth-response",
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.action",
+        "value": "authenticate"
+      },
+      "response": {
+        "message": { "status": "authenticated", "token": "{{random.uuid}}" },
+        "delay": 100,
+        "multiple": false
+      },
+      "enabled": true
+    }
+  ],
+  "connectionBehavior": {
+    "maxConnections": 50,
+    "onConnect": {
+      "message": { "type": "welcome", "server": "mock-server" },
+      "delay": 0
+    },
+    "onDisconnect": {
+      "logLevel": "info"
+    }
+  }
+}
+```
+
+### Matchers
 
 WebSocket response rules use matchers to determine when to send responses based on incoming messages.
 
-##### Exact Match
+#### Exact Match
 Matches the entire message exactly:
 ```json
 {
@@ -139,7 +265,7 @@ Matches the entire message exactly:
 }
 ```
 
-##### Contains Match
+#### Contains Match
 Matches if the message contains the specified substring:
 ```json
 {
@@ -150,7 +276,7 @@ Matches if the message contains the specified substring:
 }
 ```
 
-##### Regex Match
+#### Regex Match
 Matches using regular expressions:
 ```json
 {
@@ -161,7 +287,7 @@ Matches using regular expressions:
 }
 ```
 
-##### JSONPath Match
+#### JSONPath Match
 Matches based on JSONPath expressions in JSON messages:
 ```json
 {
@@ -205,11 +331,201 @@ Matches based on JSONPath expressions in JSON messages:
 }
 ```
 
-#### Request Matching Rules
+### REST API Schema
+
+The REST API mock configuration follows a JSON schema that defines the structure and validation rules for API mocks. Understanding this schema helps developers create valid mock configurations.
+
+📄 **Schema File:** [`schema/api-mock-schema.json`](schema/api-mock-schema.json)
+
+#### Schema Properties
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | ✓ | Name identifier for this mock configuration |
+| `type` | string | ✓ | Must be "api" for REST API mocks |
+| `description` | string | | Optional description of what this mock simulates |
+| `mappings` | array | ✓ | Array of request/response mappings |
+
+#### Mapping Structure
+
+Each mapping in the `mappings` array has:
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `id` | string | | | Optional unique identifier for this mapping |
+| `request` | object | ✓ | | Request matching criteria |
+| `response` | object | ✓ | | Response to send when request matches |
+| `enabled` | boolean | | true | Whether this mapping is active |
+| `allowedScenarios` | array | | | List of allowed X-Mock-Scenario patterns (whitelist) |
+| `forbiddenScenarios` | array | | | List of forbidden X-Mock-Scenario patterns (blacklist) |
+
+**Note:** Cannot use both `allowedScenarios` and `forbiddenScenarios` in the same mapping.
+
+#### Request Object Structure
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `method` | string | | HTTP method: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS |
+| `urlPath` | string | ✓* | Exact URL path to match |
+| `urlPathPattern` | string | ✓* | Regex pattern to match URL path |
+| `headers` | object | | Headers to match |
+| `queryParameters` | object | | Query parameters to match |
+| `bodyPatterns` | array | | Patterns to match in request body |
+
+**Note:** Must have either `urlPath` OR `urlPathPattern` (not both).
+
+#### Header Matching
+
+Headers can be matched using different operators:
+
+```json
+"headers": {
+  "Content-Type": "application/json",  // Short form (exact match)
+  "Authorization": {
+    "equals": "Bearer token123",       // Exact match
+    "matches": "Bearer [A-Za-z0-9]+",  // Regex pattern
+    "contains": "Bearer",              // Substring
+    "absent": true                      // Must NOT exist
+  }
+}
+```
+
+#### Query Parameter Matching
+
+```json
+"queryParameters": {
+  "page": {
+    "equals": "1",        // Exact match
+    "matches": "\\d+"     // Regex pattern
+  }
+}
+```
+
+#### Body Pattern Matching
+
+Multiple body matching patterns can be specified:
+
+```json
+"bodyPatterns": [
+  {
+    "contains": "search_term"          // Substring in body
+  },
+  {
+    "matches": ".*pattern.*"           // Regex pattern
+  },
+  {
+    "equalToJson": {                   // Exact JSON match
+      "key": "value"
+    }
+  },
+  {
+    "matchesJsonPath": {               // JSONPath matching
+      "expression": "$.items[*].id",
+      "equals": "123",                 // or
+      "contains": "test",              // or
+      "matches": "\\d+"                // regex
+    }
+  }
+]
+```
+
+#### Response Object Structure
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `status` | integer | ✓ | HTTP status code (100-599) |
+| `headers` | object | | Response headers (key-value pairs) |
+| `body` | string | | Response body as plain text |
+| `jsonBody` | any | | Response body as JSON object |
+| `base64Body` | string | | Response body as base64 encoded string |
+| `delay` | integer | | Delay in milliseconds before sending response |
+
+**Note:** Use only one body type (`body`, `jsonBody`, or `base64Body`) per response.
+
+#### X-Mock-Scenario Header Support
+
+The schema defines valid scenario patterns that can be matched:
+
+- **Performance**: `slow-response-\\d+`, `request-timeout-after-\\d+`
+- **Network**: `connection-reset`, `connection-refused`, `network-unreachable`, `dns-resolution-failure`
+- **Authentication**: Various `valid-auth-*`, `invalid-auth-*`, `missing-auth-*` patterns
+- **Data Quality**: `partial-data-\\d+`, `data-missing-field-*`, `data-null-field-*`, etc.
+- **HTTP Errors**: `error-[code]-[name]` patterns
+
+#### Complete API Schema Example
+
+```json
+{
+  "name": "full-featured-api",
+  "type": "api",
+  "description": "Complete API mock with all features",
+  "mappings": [
+    {
+      "id": "complex-endpoint",
+      "request": {
+        "method": "POST",
+        "urlPathPattern": "/api/users/\\d+/orders",
+        "headers": {
+          "Content-Type": {
+            "equals": "application/json"
+          },
+          "Authorization": {
+            "matches": "Bearer .+"
+          },
+          "X-Request-ID": {
+            "absent": false
+          }
+        },
+        "queryParameters": {
+          "status": {
+            "matches": "(pending|completed|cancelled)"
+          },
+          "limit": {
+            "equals": "10"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.items[*].quantity",
+              "matches": "[1-9]\\d*"
+            }
+          },
+          {
+            "contains": "productId"
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json",
+          "Location": "/api/orders/{{random.uuid}}"
+        },
+        "jsonBody": {
+          "orderId": "{{random.uuid}}",
+          "status": "created",
+          "timestamp": "{{timestamp}}",
+          "totalItems": 3
+        },
+        "delay": 500
+      },
+      "enabled": true,
+      "allowedScenarios": [
+        "slow-response-[ms]",
+        "error-500-internal",
+        "partial-data-[percent]"
+      ]
+    }
+  ]
+}
+```
+
+### Request Matching Rules
 
 The mock server evaluates requests against configured mappings using multiple criteria. ALL conditions must match for a mapping to be selected.
 
-##### **Method Matching**
+#### Method Matching
 ```json
 "request": {
   "method": "POST"  // GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
@@ -219,7 +535,7 @@ The mock server evaluates requests against configured mappings using multiple cr
 - Defaults to "GET" if not specified
 - Use "ANY" to match any method
 
-##### **URL Path Matching**
+#### URL Path Matching
 
 **Exact Path** (Priority 1):
 ```json
@@ -234,7 +550,7 @@ The mock server evaluates requests against configured mappings using multiple cr
 - Escape special characters (`\\d` for `\d`)
 - Priority based on pattern complexity
 
-##### **Header Matching**
+#### Header Matching
 
 **Exact Match**:
 ```json
@@ -273,7 +589,7 @@ The mock server evaluates requests against configured mappings using multiple cr
 }
 ```
 
-##### **Query Parameter Matching**
+#### Query Parameter Matching
 
 ```json
 "queryParameters": {
@@ -286,7 +602,7 @@ The mock server evaluates requests against configured mappings using multiple cr
 }
 ```
 
-##### **Body Matching**
+#### Body Matching
 
 **Contains**:
 ```json
@@ -311,7 +627,7 @@ The mock server evaluates requests against configured mappings using multiple cr
 }]
 ```
 
-##### **Complete Example**
+#### Complete Example
 
 ```json
 {
@@ -351,7 +667,7 @@ The mock server evaluates requests against configured mappings using multiple cr
 }
 ```
 
-##### **Matching Order**
+#### Matching Order
 
 1. **Method Check** - HTTP method must match
 2. **Path Check** - URL path must match (exact or pattern)
@@ -361,18 +677,18 @@ The mock server evaluates requests against configured mappings using multiple cr
 
 If any check fails, the mapping is skipped and the next one is evaluated.
 
-#### Response Options
+### Response Options
 
 Configure how the mock server responds when a request matches:
 
-##### **Status Code** (required)
+#### Status Code (required)
 ```json
 "response": {
   "status": 200  // Any HTTP status code (100-599)
 }
 ```
 
-##### **Response Headers**
+#### Response Headers
 ```json
 "response": {
   "headers": {
@@ -383,7 +699,7 @@ Configure how the mock server responds when a request matches:
 }
 ```
 
-##### **Response Body Options**
+#### Response Body Options
 
 **Plain Text Body**:
 ```json
@@ -412,7 +728,7 @@ Configure how the mock server responds when a request matches:
 
 Note: Use only one body type (`body`, `jsonBody`, or `base64Body`) per response.
 
-##### **Response Delay**
+#### Response Delay
 ```json
 "response": {
   "delay": 2000,  // Wait 2 seconds before responding
@@ -421,7 +737,7 @@ Note: Use only one body type (`body`, `jsonBody`, or `base64Body`) per response.
 }
 ```
 
-##### **Complete Response Example**
+#### Complete Response Example
 ```json
 {
   "mappings": [{
@@ -447,9 +763,9 @@ Note: Use only one body type (`body`, `jsonBody`, or `base64Body`) per response.
 }
 ```
 
-#### Mapping Configuration Options
+### Mapping Configuration Options
 
-##### **Enable/Disable Mappings**
+#### Enable/Disable Mappings
 ```json
 {
   "mappings": [{
@@ -461,7 +777,7 @@ Note: Use only one body type (`body`, `jsonBody`, or `base64Body`) per response.
 }
 ```
 
-##### **Scenario Restrictions**
+#### Scenario Restrictions
 
 Control which X-Mock-Scenario patterns a mapping accepts:
 
@@ -848,66 +1164,66 @@ curl -H "X-Mock-Scenario: error-507-insufficient-storage" http://localhost:8080/
 ```
 *Returns 507 Insufficient Storage. Tests handling of resource exhaustion and capacity limits.*
 
-#### Combined Scenarios
+### Combined Scenarios
 
-##### Multiple Scenarios
+#### Multiple Scenarios
 **Purpose:** Test complex real-world conditions where multiple issues occur simultaneously. Clients can combine multiple scenarios by separating them with commas in the X-Mock-Scenario header value.
 
-##### 1. Slow Network with Partial Data Loss
+#### 1. Slow Network with Partial Data Loss
 ```bash
 curl -H "X-Mock-Scenario: slow-response-2000,partial-data-50,data-missing-field-timestamp" http://localhost:8080/api/transactions
 ```
 *Simulates degraded network conditions where responses are slow (2s delay), only half the data arrives, and critical timestamp fields are missing. Tests resilience against poor connectivity and data integrity issues.*
 
-##### 2. Authentication Failure Under Load
+#### 2. Authentication Failure Under Load
 ```bash
 curl -H "Authorization: Bearer expired-token" -H "X-Mock-Scenario: invalid-auth-bearer-expired,slow-response-3000,error-429-too-many-requests" http://localhost:8080/api/secure
 ```
 *Tests how the application handles expired tokens when the server is under heavy load (rate limiting active) with slow responses. Common scenario during traffic spikes.*
 
-##### 3. Database Issues with Field Corruption
+#### 3. Database Issues with Field Corruption
 ```bash
 curl -H "X-Mock-Scenario: slow-response-5000,data-null-field-id,data-wrong-type-field-price,data-extra-fields" http://localhost:8080/api/products
 ```
 *Simulates database performance issues (5s delay) with data quality problems: null IDs, wrong data types for prices, and unexpected fields. Tests handling of degraded database conditions.*
 
-##### 4. API Gateway Timeout with Truncated Response
+#### 4. API Gateway Timeout with Truncated Response
 ```bash
 curl -H "X-Mock-Scenario: request-timeout-after-30000,data-truncated-80,error-504-gateway-timeout" http://localhost:8080/api/report
 ```
 *Simulates an API gateway timing out after 30 seconds with incomplete data transmission. Tests timeout handling and partial response recovery strategies.*
 
-##### 5. Cascading Service Failures
+#### 5. Cascading Service Failures
 ```bash
 curl -H "X-Mock-Scenario: error-503-service-unavailable,slow-response-8000,connection-reset" http://localhost:8080/api/health
 ```
 *Simulates a service trying to recover from maintenance mode but experiencing network instability. Tests circuit breaker patterns and failover mechanisms.*
 
-##### 6. Valid Auth with Data Quality Issues
+#### 6. Valid Auth with Data Quality Issues
 ```bash
 curl -H "X-API-Key: valid-key-123" -H "X-Mock-Scenario: valid-auth-apikey-x-api-key,partial-data-25,data-corrupted-json" http://localhost:8080/api/dashboard
 ```
 *Authenticated request succeeds but receives severely degraded data (only 25% complete and corrupted JSON). Tests graceful degradation when authentication works but backend systems fail.*
 
-##### 7. Mobile App Poor Connectivity Simulation
+#### 7. Mobile App Poor Connectivity Simulation
 ```bash
 curl -H "X-Mock-Scenario: slow-response-4000,partial-data-60,connection-reset,request-timeout-after-10000" http://localhost:8080/api/mobile/sync
 ```
 *Simulates typical mobile connectivity issues: slow 4G/weak WiFi (4s delays), partial data transmission (60%), intermittent connection drops, and eventual timeout. Essential for mobile app testing.*
 
-##### 8. Payment Processing Edge Cases
+#### 8. Payment Processing Edge Cases
 ```bash
 curl -H "Authorization: Bearer valid-token" -H "X-Mock-Scenario: valid-auth-bearer,slow-response-6000,error-409-conflict,data-missing-field-transaction_id" http://localhost:8080/api/payment/process
 ```
 *Tests payment processing under adverse conditions: valid authentication but slow processing (6s), conflict errors (duplicate payment attempts), and missing transaction IDs. Critical for financial transaction testing.*
 
-##### 9. Microservices Communication Breakdown
+#### 9. Microservices Communication Breakdown
 ```bash
 curl -H "X-Mock-Scenario: error-502-bad-gateway,dns-resolution-failure,slow-response-2500,data-null-field-status" http://localhost:8080/api/orders/status
 ```
 *Simulates inter-service communication failures: bad gateway errors, DNS issues between services, slow responses, and null status fields. Tests microservices resilience patterns.*
 
-##### 10. Rate Limited API with Authentication Issues
+#### 10. Rate Limited API with Authentication Issues
 ```bash
 curl -H "X-API-Key: invalid" -H "X-Mock-Scenario: invalid-auth-apikey-x-api-key,error-429-too-many-requests,slow-response-1000" http://localhost:8080/api/search
 ```
@@ -1030,24 +1346,24 @@ Example:
 
 The mock server includes comprehensive diagnostic logging to help troubleshoot test failures:
 
-#### **Request Logger**
+#### Request Logger
 - Logs all incoming requests with correlation IDs
 - Tracks matched mock configurations and response details  
 - Records scenario processing and modifications applied
 - Shows response timing and status codes
 
-#### **Mock Matcher Debugger**
+#### Mock Matcher Debugger
 - Shows detailed analysis of why requests matched or didn't match specific mocks
 - Includes priority evaluation and matching criteria breakdown
 - Provides failure reasons with helpful suggestions
 - Records performance metrics for the matching process
 
-#### **Scenario Validator**  
+#### Scenario Validator  
 - Validates X-Mock-Scenario header syntax
 - Provides detailed error messages for invalid scenarios
 - Suggests corrections for common mistakes
 
-#### **Log Output Examples**
+#### Log Output Examples
 
 Console output (default):
 ```
@@ -1067,7 +1383,7 @@ Invalid scenario header:
     suggestions: ["Use format: slow-response-[milliseconds], e.g., slow-response-2000"]
 ```
 
-#### **File Logging**
+#### File Logging
 
 Enable file logging for persistent diagnostic information:
 
