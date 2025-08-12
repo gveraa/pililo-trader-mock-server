@@ -17,13 +17,13 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
   - [REST API](#rest-api)
     - [REST API Schema](#rest-api-schema)
     - [Request Matching Rules](#request-matching-rules)
+      - [Matching Order](#matching-order)
       - [Method Matching](#method-matching)
       - [URL Path Matching](#url-path-matching)
       - [Header Matching](#header-matching)
       - [Query Parameter Matching](#query-parameter-matching)
       - [Body Matching](#body-matching)
       - [Complete Example](#complete-example)
-      - [Matching Order](#matching-order)
     - [Response Options](#response-options)
       - [Status Code](#status-code-required)
       - [Response Headers](#response-headers)
@@ -525,6 +525,16 @@ The schema defines valid scenario patterns that can be matched:
 
 The mock server evaluates requests against configured mappings using multiple criteria. ALL conditions must match for a mapping to be selected.
 
+#### Matching Order
+
+1. **Method Check** - HTTP method must match
+2. **Path Check** - URL path must match (exact or pattern)
+3. **Headers Check** - ALL header conditions must pass
+4. **Query Check** - ALL query parameter conditions must pass
+5. **Body Check** - ALL body patterns must match
+
+If any check fails, the mapping is skipped and the next one is evaluated.
+
 #### Method Matching
 ```json
 "request": {
@@ -666,16 +676,6 @@ The mock server evaluates requests against configured mappings using multiple cr
   }]
 }
 ```
-
-#### Matching Order
-
-1. **Method Check** - HTTP method must match
-2. **Path Check** - URL path must match (exact or pattern)
-3. **Headers Check** - ALL header conditions must pass
-4. **Query Check** - ALL query parameter conditions must pass
-5. **Body Check** - ALL body patterns must match
-
-If any check fails, the mapping is skipped and the next one is evaluated.
 
 ### Response Options
 

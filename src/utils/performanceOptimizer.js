@@ -85,6 +85,20 @@ function extractPath(url) {
  * Optimize mapping for fast matching
  */
 function optimizeMapping(mapping) {
+  // Check if mapping uses JSONPath - if so, don't optimize as fast matcher doesn't support it
+  const hasJsonPath = mapping.request?.bodyPatterns?.some(pattern => 
+    pattern.matchesJsonPath !== undefined
+  );
+  
+  // If JSONPath is used, return the mapping without optimization flag
+  if (hasJsonPath) {
+    return {
+      ...mapping,
+      _optimized: false,
+      _method: (mapping.request.method || 'GET').toUpperCase()
+    };
+  }
+  
   const optimized = {
     ...mapping,
     _optimized: true,

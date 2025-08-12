@@ -1,0 +1,148 @@
+{
+  "name": "ripio-orders",
+  "type": "api",
+  "description": "Ripio orders API mock with buy/sell limit and market orders",
+  "mappings": [
+    {
+      "id": "place-order-sell-limit",
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/ripio/orders",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.side",
+              "equals": "sell"
+            }
+          },
+          {
+            "matchesJsonPath": {
+              "expression": "$.type",
+              "equals": "limit"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "success": true,
+          "data": {
+            "id": "order-sell-12345",
+            "client_order_id": "test-sell-order",
+            "pair": "BTC_USD",
+            "side": "sell",
+            "type": "limit",
+            "status": "pending",
+            "amount": "0.05",
+            "filled_amount": "0",
+            "price": "46000",
+            "cost": "0",
+            "fee": "0",
+            "fee_currency": "USD",
+            "created_at": "2024-01-10T12:00:00Z",
+            "updated_at": "2024-01-10T12:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "id": "place-order-market",
+      "priority": 2,
+      "request": {
+        "method": "POST",
+        "urlPath": "/ripio/orders",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.type",
+              "equals": "market"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "success": true,
+          "data": {
+            "id": "order-market-67890",
+            "client_order_id": null,
+            "pair": "ETH_USD",
+            "side": "buy",
+            "type": "market",
+            "status": "filled",
+            "amount": "1.0",
+            "filled_amount": "1.0",
+            "price": null,
+            "cost": "3005.00",
+            "fee": "4.5075",
+            "fee_currency": "USD",
+            "created_at": "2024-01-10T12:00:00Z",
+            "updated_at": "2024-01-10T12:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "id": "place-order-buy-limit",
+      "priority": 3,
+      "request": {
+        "method": "POST",
+        "urlPath": "/ripio/orders",
+        "headers": {
+          "X-API-KEY": {
+            "matches": ".*"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.side",
+              "equals": "buy"
+            }
+          },
+          {
+            "matchesJsonPath": {
+              "expression": "$.type",
+              "equals": "limit"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "success": true,
+          "data": {
+            "id": "order-buy-54321",
+            "client_order_id": "test-buy-order",
+            "pair": "BTC_USD",
+            "side": "buy",
+            "type": "limit",
+            "status": "pending",
+            "amount": "0.1",
+            "filled_amount": "0",
+            "price": "45000",
+            "cost": "0",
+            "fee": "0",
+            "fee_currency": "USD",
+            "created_at": "2024-01-10T12:00:00Z",
+            "updated_at": "2024-01-10T12:00:00Z"
+          }
+        }
+      }
+    }
+  ]
+}
