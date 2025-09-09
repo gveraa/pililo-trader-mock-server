@@ -1345,10 +1345,19 @@ logs/                              # Log files directory
 
 ### Mock Examples
 
-1. **payment-api.json** - Financial operations with `allowedScenarios` whitelist
-2. **user-management-api.json** - User endpoints with different restrictions per endpoint
-3. **health-monitoring-api.json** - System health endpoints using `forbiddenScenarios` blacklist
-4. **trading-platform-api.json** - Trading endpoints with no restrictions (accepts all scenarios)
+#### REST API Examples
+1. **[payment-api.json](mocks/api-examples/payment-api.json)** - Financial operations with `allowedScenarios` whitelist
+2. **[user-management-api.json](mocks/api-examples/user-management-api.json)** - User endpoints with different restrictions per endpoint
+3. **[health-monitoring-api.json](mocks/api-examples/health-monitoring-api.json)** - System health endpoints using `forbiddenScenarios` blacklist
+4. **[trading-platform-api.json](mocks/api-examples/trading-platform-api.json)** - Trading endpoints with no restrictions (accepts all scenarios)
+5. **[ripio-trade-errors.json](mocks/api-examples/ripio/ripio-trade-errors.json)** - Ripio exchange error scenarios for trading
+6. **[ripio-orders.json](mocks/api-examples/ripio/ripio-orders.json)** - Ripio exchange order endpoints
+
+#### WebSocket Examples
+1. **[example-websocket.json](mocks/websocket-examples/example-websocket.json)** - Basic WebSocket with echo functionality
+2. **[market-data-server.json](mocks/websocket-examples/market-data/market-data-server.json)** - Real-time market price feeds
+3. **[crypto-news-server.json](mocks/websocket-examples/news/crypto-news-server.json)** - Crypto news broadcast server
+4. **[example-trading-server.json](mocks/websocket-examples/trading/example-trading-server.json)** - Trading order updates & balance tracking
 
 ### Commands
 
