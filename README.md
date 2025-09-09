@@ -5,6 +5,9 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+  - [Local Development](#local-development)
+  - [Docker Compose](#docker-compose-1)
+  - [Standalone Docker](#standalone-docker)
 - [Features](#features)
 - [How to create mocks?](#how-to-create-mocks)
   - [WebSocket](#websocket)
@@ -52,21 +55,57 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
 
 ## Quick Start
 
+### Local Development
+
 ```bash
-# Install
+# Install dependencies
 yarn install
 
-# Run
-yarn start
-
-# Development mode
+# Run in development mode with hot-reload
 yarn dev
 
-# Validate configs
+# Validate mock configurations
 yarn validate
+
+# Run in production mode
+yarn start
 ```
 
-## Docker
+### Docker Compose
+
+The easiest way to run the mock server is using Docker Compose with the included [`docker-compose.yml`](./docker-compose.yml):
+
+```bash
+# Start the server in detached mode
+docker-compose up -d
+
+# View real-time logs
+docker-compose logs -f websocket-mock-server
+
+# Stop and remove containers
+docker-compose down
+
+# Rebuild image after code changes
+docker-compose up -d --build
+```
+
+**Docker Compose Configuration ([`docker-compose.yml`](./docker-compose.yml)):**
+- **Service**: `websocket-mock-server` - builds from local Dockerfile
+- **Port**: 8080 exposed for both WebSocket and REST APIs
+- **Volume**: `./mocks:/app/mocks` mounted for hot-reload of mock configs
+- **Environment Variables**:
+  - `NODE_ENV=production` - runs in production mode
+  - `MOCKS_DIR=mocks` - specifies mock directory
+  - `ENABLE_FILE_LOGGING=true` - enables diagnostic logging
+- **Health Check**: runs every 30s with 3 retries
+- **Restart Policy**: `unless-stopped` for automatic recovery
+- **Logging**: JSON file driver with 10MB max size and 3 file rotation
+
+The server will automatically load all mock configurations from the [`mocks/`](./mocks) directory. Check out the [example mock files](./mocks) for WebSocket and REST API configurations.
+
+### Standalone Docker
+
+For running without Docker Compose:
 
 ```bash
 docker build -t mock-server .
