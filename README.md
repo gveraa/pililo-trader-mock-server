@@ -90,7 +90,8 @@ docker-compose up -d --build
 ```
 
 **Docker Compose Configuration ([`docker-compose.yml`](./docker-compose.yml)):**
-- **Service**: `websocket-mock-server` - builds from local Dockerfile
+- **Image**: `ghcr.io/gveraa/pililo-trader-mock-server` - pulls from GitHub Container Registry
+- **Service**: `websocket-mock-server` - builds from local Dockerfile if image not available
 - **Port**: 8080 exposed for both WebSocket and REST APIs
 - **Volume**: `./mocks:/app/mocks` mounted for hot-reload of mock configs
 - **Environment Variables**:
