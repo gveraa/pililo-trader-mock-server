@@ -6,7 +6,7 @@ Configuration-driven mock server supporting WebSocket and REST APIs on port 8080
 
 - [Quick Start](#quick-start)
   - [Local Development](#local-development)
-  - [Docker Compose](#docker-compose-1)
+  - [Docker Compose](#docker-compose)
   - [Standalone Docker](#standalone-docker)
 - [Features](#features)
 - [How to create mocks?](#how-to-create-mocks)
