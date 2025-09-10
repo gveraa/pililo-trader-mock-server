@@ -324,13 +324,24 @@ class MockServer {
   async startAll() {
     const configs = this.configManager.getAllConfigurations();
     
+    // Create a single Fastify server regardless of configurations
+    const server = await this.createServer();
+    
     if (configs.length === 0) {
-      this.logger.warn('No configurations found to start');
+      this.logger.warn('No configurations found to start - running with status endpoints only');
+      
+      // Add built-in endpoints so status and health checks work
+      this.registerBuiltInEndpoints(server);
+      
+      // Start the server with just status endpoints
+      const port = parseInt(process.env.PORT) || 8080;
+      const host = process.env.HOST || '0.0.0.0';
+      
+      await server.listen({ port, host });
+      this.logger.info(`Server running on ${host}:${port} (status endpoints only)`);
+      this.activeServers.set('default', server);
       return;
     }
-    
-    // Create a single Fastify server
-    const server = await this.createServer();
     
     // Register all configurations
     for (const config of configs) {
