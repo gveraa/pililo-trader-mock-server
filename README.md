@@ -95,7 +95,6 @@ docker-compose up -d --build
 - **Port**: 8080 exposed for both WebSocket and REST APIs
 - **Volume**: `./mocks:/app/mocks` mounted for hot-reload of mock configs
 - **Environment Variables**:
-  - `NODE_ENV=production` - runs in production mode
   - `MOCKS_DIR=mocks` - specifies mock directory
   - `ENABLE_FILE_LOGGING=true` - enables diagnostic logging
 - **Health Check**: runs every 30s with 3 retries
@@ -1284,13 +1283,14 @@ curl -H "X-API-Key: invalid" -H "X-Mock-Scenario: invalid-auth-apikey-x-api-key,
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /` | API documentation - Shows all available endpoints |
-| `GET /health` | Health check - Server status and connections |
-| `GET /status` | Show loaded mocks, scenarios, and failures |
-| `GET /schema/ws` | WebSocket mock schema |
-| `GET /schema/api` | API mock schema |
-| `GET /status/:code` | Return any HTTP status (100-599) |
-| `GET /timeout/:seconds` | Delay response (0-60 seconds) |
+| `GET /` | Interactive API documentation - Shows this README with live links |
+| `GET /health` | Health check - Returns server status, connections, and uptime |
+| `GET /status` | **Troubleshooting endpoint** - Shows:<br>• All loaded mock configurations (ws/api)<br>• Which files were successfully loaded<br>• Failed configurations with error details<br>• Endpoint priorities and matching rules<br>• Scenario restrictions per endpoint<br>**Use this to debug why mocks aren't loading or matching!** |
+| `GET /schema/ws` | WebSocket mock JSON schema - View validation requirements |
+| `GET /schema/api` | REST API mock JSON schema - View validation requirements |
+| `GET /status/:code` | Test endpoint - Returns any HTTP status code (100-599) |
+| `GET /timeout/:seconds` | Test endpoint - Delays response by specified seconds (0-60) |
+| `GET /debug/schemas` | Debug endpoint - Shows schema loading status |
 
 ## Development
 
@@ -1322,11 +1322,10 @@ src/                               # Source code
 │   ├── ConnectionManager.js      # WebSocket connection management
 │   ├── MessageHandler.js         # WebSocket message processing
 │   ├── SchedulerService.js       # Scheduled message sender
-│   ├── ApiRequestMatcher.js      # Legacy API request matcher
+│   ├── ApiRequestMatcher.js      # API request matcher
 │   ├── FastApiRequestMatcher.js  # Optimized API request matcher
 │   ├── ApiResponseHandler.js     # API response processor
-│   ├── TemplateEngine.js         # Legacy template processor
-│   ├── FastTemplateEngine.js     # Optimized template engine
+│   ├── FastTemplateEngine.js     # Template engine for dynamic values
 │   ├── RequestLogger.js          # Diagnostic request logging
 │   ├── MockMatcherDebugger.js    # Debug why requests match/fail
 │   └── ScenarioValidator.js      # X-Mock-Scenario validation
@@ -1335,18 +1334,29 @@ src/                               # Source code
     ├── fastLogger.js              # Performance logging utilities
     └── performanceOptimizer.js   # Server optimization helpers
 
-schema/                            # JSON schema definitions
-├── api-mock-schema.json          # REST API mock schema with validation rules
-└── websocket-mock-schema.json    # WebSocket mock schema with validation rules
+schema/                            # JSON schema definitions (REQUIRED)
+├── api-mock-schema.json          # REST API mock validation schema
+└── websocket-mock-schema.json    # WebSocket mock validation schema
+
+templates/                         # HTML templates
+└── readme.html                    # README rendering template
+
+public/                            # Static assets
+└── styles.css                     # UI styles
 
 logs/                              # Log files directory
-├── .gitkeep                       # Ensures directory in git
-└── mock-server.log               # Server logs (when ENABLE_FILE_LOGGING=true)
+└── app.log                        # Server logs (when ENABLE_FILE_LOGGING=true)
 ```
 
 ### Mock Examples
 
-#### REST API Examples
+> **IMPORTANT: Schema Validation is Mandatory**
+> 
+> All mock configuration files MUST be valid against their respective JSON schemas:
+> - **WebSocket mocks** must validate against [`schema/websocket-mock-schema.json`](schema/websocket-mock-schema.json)
+> - **REST API mocks** must validate against [`schema/api-mock-schema.json`](schema/api-mock-schema.json)
+
+#### REST API Examples (All Schema-Validated)
 1. **[payment-api.json](mocks/api-examples/payment-api.json)** - Financial operations with `allowedScenarios` whitelist
 2. **[user-management-api.json](mocks/api-examples/user-management-api.json)** - User endpoints with different restrictions per endpoint
 3. **[health-monitoring-api.json](mocks/api-examples/health-monitoring-api.json)** - System health endpoints using `forbiddenScenarios` blacklist
@@ -1354,7 +1364,7 @@ logs/                              # Log files directory
 5. **[ripio-trade-errors.json](mocks/api-examples/ripio/ripio-trade-errors.json)** - Ripio exchange error scenarios for trading
 6. **[ripio-orders.json](mocks/api-examples/ripio/ripio-orders.json)** - Ripio exchange order endpoints
 
-#### WebSocket Examples
+#### WebSocket Examples (All Schema-Validated)
 1. **[example-websocket.json](mocks/websocket-examples/example-websocket.json)** - Basic WebSocket with echo functionality
 2. **[market-data-server.json](mocks/websocket-examples/market-data/market-data-server.json)** - Real-time market price feeds
 3. **[crypto-news-server.json](mocks/websocket-examples/news/crypto-news-server.json)** - Crypto news broadcast server
@@ -1371,7 +1381,6 @@ yarn validate:watch   # Watch mode validation
 ### Environment Variables
 
 - `MOCKS_DIR` - Mock files directory (default: `mocks`)
-- `NODE_ENV` - Environment (development/production)
 - `ENABLE_FILE_LOGGING` - Enable file logging to `./logs/mock-server.log` (default: `false`)
   - Set to `true` to enable file logging
   - Log file is overwritten on each startup (no rotation)

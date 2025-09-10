@@ -58,7 +58,20 @@ async function main() {
 
   } catch (error) {
     logger.error({ error: error.message }, 'Failed to start application');
-    process.exit(1);
+    logger.info('Application will continue running without mock configurations');
+    
+    // Start a basic server anyway
+    const basicServer = require('fastify')();
+    basicServer.get('/', async (request, reply) => {
+      return {
+        status: 'running',
+        message: 'Mock server is running but no valid configurations loaded',
+        error: error.message
+      };
+    });
+    
+    await basicServer.listen({ port: 8080, host: '0.0.0.0' });
+    logger.info('Basic server started on port 8080');
   }
 }
 

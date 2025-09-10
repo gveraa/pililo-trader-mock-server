@@ -1,19 +1,17 @@
-version: '3.8'
-
 services:
-  websocket-mock-server:
-    build: .
+  pililo-mock-server:
+    image: ghcr.io/gveraa/pililo-trader-mock-server:latest
+    container_name: pililo_mock_server
     ports:
       - "8080:8080"
     volumes:
       - ./mocks:/app/mocks
     environment:
-      - NODE_ENV=production
       - MOCKS_DIR=mocks
-      - ENABLE_FILE_LOGGING=true
+      - ENABLE_FILE_LOGGING=false
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "console.log('Health check passed')"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

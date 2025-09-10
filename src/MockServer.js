@@ -59,7 +59,8 @@ class MockServer {
   async initialize(options = {}) {
     try {
       // Load schema
-      await this.configManager.loadSchema(options.schemaPath);
+      await this.configManager.loadSchema();
+      this.logger.info('Schemas loaded successfully');
       
       // Load configurations
       const loadResults = await this.configManager.loadConfigurations(
@@ -73,10 +74,11 @@ class MockServer {
       // Check if any configurations were loaded
       if (loadResults.summary.loaded === 0) {
         if (loadResults.summary.total === 0) {
-          throw new Error('No configuration files found in the mocks directory');
+          this.logger.warn('No configuration files found in the mocks directory');
         } else {
-          throw new Error(`All ${loadResults.summary.total} configuration files failed validation`);
+          this.logger.error(`All ${loadResults.summary.total} configuration files failed validation`);
         }
+        // Don't throw error, just log and continue with empty configurations
       }
       
       // Organize loaded mocks by type
@@ -400,6 +402,23 @@ class MockServer {
       },
       disableRequestLogging: true, // Disable Fastify's request logging
       exposeHeadRoutes: false  // Disable automatic HEAD route generation
+    });
+
+    // Register static file serving plugin (following Fastify best practices)
+    await server.register(require('@fastify/static'), {
+      root: require('path').join(process.cwd(), 'public'),
+      prefix: '/public/',
+      decorateReply: false // Don't add sendFile method to avoid conflicts
+    });
+    
+    // Register view engine plugin for template rendering
+    await server.register(require('@fastify/view'), {
+      engine: {
+        ejs: require('ejs')
+      },
+      root: require('path').join(process.cwd(), 'templates'),
+      viewExt: 'html',
+      propertyName: 'view'
     });
 
     // Register WebSocket plugin
@@ -1075,137 +1094,107 @@ class MockServer {
    * Register built-in endpoints
    */
   registerBuiltInEndpoints(server) {
-    // Root endpoint - API documentation
+    // Root endpoint - Return README as HTML using Fastify view engine
     server.get('/', async (request, reply) => {
       const correlationId = generateCorrelationId();
       this.logger.info(createRequestLog(request.method, request.url, correlationId),
         `→ [${correlationId}] ${request.method} ${request.url}`);
       
-      const response = {
-        name: 'Mock Server',
-        version: '2.0.0',
-        description: 'Configuration-driven mock server supporting WebSocket and REST APIs',
-        endpoints: {
-          core: [
-            {
-              path: 'GET /',
-              description: 'This endpoint - Shows all available endpoints and documentation'
-            },
-            {
-              path: 'GET /health',
-              description: 'Health check endpoint - Returns server health status, active connections, and uptime'
-            },
-            {
-              path: 'GET /status',
-              description: 'Status endpoint - Shows all loaded mock configurations, available scenarios, and any failed mocks'
-            },
-            {
-              path: 'GET /schema/ws',
-              description: 'WebSocket schema endpoint - Returns JSON schema for WebSocket mock configuration'
-            },
-            {
-              path: 'GET /schema/api',
-              description: 'API schema endpoint - Returns JSON schema for REST API mock configuration'
-            }
-          ],
-          utilities: [
-            {
-              path: 'GET /status/:code',
-              description: 'Status code test endpoint - Returns any HTTP status code (100-599) for testing',
-              example: 'GET /status/404'
-            },
-            {
-              path: 'GET /timeout/:seconds',
-              description: 'Timeout test endpoint - Delays response by specified seconds (0-60) for timeout testing',
-              example: 'GET /timeout/5'
-            }
-          ],
-          websocket: [
-            {
-              path: 'ws://localhost:8080/ws',
-              description: 'WebSocket endpoint - Connect to receive scheduled messages and send messages for response rules'
-            }
-          ]
-        },
-        documentation: {
-          'X-Mock-Scenario': 'Use this header to simulate various test scenarios (delays, errors, auth issues, data problems)',
-          'Configuration': 'Place JSON mock files in the mocks/ directory',
-          'More Info': 'See /status for loaded mocks and available scenarios'
-        },
-        availableScenarios: {
-          description: 'Scenarios can be used with X-Mock-Scenario header on any endpoint (unless restricted)',
-          performance: {
-            'slow-response-[ms]': 'Delay response by specified milliseconds (e.g., slow-response-2000)',
-            'request-timeout-after-[ms]': 'Timeout after specified milliseconds with 408 error (e.g., request-timeout-after-5000)'
-          },
-          network: {
-            'connection-reset': 'Simulate TCP connection reset (ECONNRESET)',
-            'connection-refused': 'Simulate connection refused (ECONNREFUSED)',
-            'network-unreachable': 'Simulate network unreachable (ENETUNREACH)',
-            'dns-resolution-failure': 'Simulate DNS lookup failure (ENOTFOUND)'
-          },
-          errors: {
-            'error-400-bad-request': 'Return 400 Bad Request - malformed request',
-            'error-401-unauthorized': 'Return 401 Unauthorized - authentication required',
-            'error-403-forbidden': 'Return 403 Forbidden - insufficient permissions',
-            'error-404-not-found': 'Return 404 Not Found - resource does not exist',
-            'error-405-method-not-allowed': 'Return 405 Method Not Allowed - wrong HTTP method',
-            'error-409-conflict': 'Return 409 Conflict - resource conflict/duplicate',
-            'error-422-validation-failed': 'Return 422 Unprocessable Entity - validation errors',
-            'error-429-too-many-requests': 'Return 429 Too Many Requests - rate limit exceeded',
-            'error-500-internal': 'Return 500 Internal Server Error - server failure',
-            'error-502-bad-gateway': 'Return 502 Bad Gateway - upstream server error',
-            'error-503-service-unavailable': 'Return 503 Service Unavailable - service down',
-            'error-504-gateway-timeout': 'Return 504 Gateway Timeout - upstream timeout',
-            'error-507-insufficient-storage': 'Return 507 Insufficient Storage - storage full'
-          },
-          authentication: {
-            valid: {
-              'valid-auth-bearer': 'Simulate valid Bearer token authentication',
-              'valid-auth-basic': 'Simulate valid Basic authentication',
-              'valid-auth-apikey-[header-name]': 'Simulate valid API key in specified header (e.g., valid-auth-apikey-x-api-key)',
-              'valid-auth-jwt': 'Simulate valid JWT token',
-              'valid-auth-oauth2': 'Simulate valid OAuth2 token'
-            },
-            invalid: {
-              'invalid-auth-bearer': 'Simulate invalid Bearer token',
-              'invalid-auth-bearer-expired': 'Simulate expired Bearer token',
-              'invalid-auth-bearer-malformed': 'Simulate malformed Bearer token format',
-              'invalid-auth-basic': 'Simulate wrong username/password',
-              'invalid-auth-basic-format': 'Simulate malformed Basic auth header',
-              'invalid-auth-apikey-[header-name]': 'Simulate invalid API key in specified header',
-              'invalid-auth-jwt': 'Simulate invalid JWT signature',
-              'invalid-auth-jwt-expired': 'Simulate expired JWT token',
-              'invalid-auth-oauth2': 'Simulate invalid OAuth2 token'
-            },
-            missing: {
-              'missing-auth-bearer': 'Simulate missing Authorization header',
-              'missing-auth-basic': 'Simulate missing Basic auth credentials',
-              'missing-auth-apikey-[header-name]': 'Simulate missing API key header',
-              'missing-auth-jwt': 'Simulate missing JWT token',
-              'missing-auth-oauth2': 'Simulate missing OAuth2 token'
-            }
-          },
-          data: {
-            'partial-data-[percent]': 'Return only specified percentage of data (e.g., partial-data-50)',
-            'data-missing-field-[field-name]': 'Remove specified field from response (e.g., data-missing-field-id)',
-            'data-null-field-[field-name]': 'Set specified field to null (e.g., data-null-field-price)',
-            'data-wrong-type-field-[field-name]': 'Return wrong data type for field (e.g., data-wrong-type-field-count)',
-            'data-corrupted-json': 'Return malformed/corrupted JSON response',
-            'data-extra-fields': 'Add unexpected extra fields to response',
-            'data-truncated-[percent]': 'Truncate response at specified percentage (e.g., data-truncated-80)'
-          },
-          usage: {
-            single: 'X-Mock-Scenario: slow-response-2000',
-            multiple: 'X-Mock-Scenario: slow-response-2000,error-500-internal,partial-data-50',
-            restrictions: 'Some endpoints may restrict allowed scenarios - check /status for details'
-          }
-        }
-      };
+      try {
+        const templateData = await this.generateReadmeTemplateData(request);
+        
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
+          `← [${correlationId}] 200 ${request.method} ${request.url}`);
+        return reply.view('readme.html', templateData);
+      } catch (error) {
+        this.logger.error({ error: error.message }, 'Failed to generate README HTML');
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, 500),
+          `← [${correlationId}] 500 ${request.method} ${request.url}`);
+        return reply.code(500).type('text/html').send(`
+          <html>
+            <head><title>Error</title></head>
+            <body style="font-family: Arial, sans-serif; margin: 40px; color: #d32f2f;">
+              <h1>Error Loading Documentation</h1>
+              <p>Could not load README.md file: ${error.message}</p>
+            </body>
+          </html>
+        `);
+      }
+    });
+    
+    // Raw file endpoint - Serve files referenced in markdown
+    server.get('/raw/*', async (request, reply) => {
+      const correlationId = generateCorrelationId();
+      this.logger.info(createRequestLog(request.method, request.url, correlationId),
+        `→ [${correlationId}] ${request.method} ${request.url}`);
       
-      this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
-        `← [${correlationId}] 200 ${request.method} ${request.url}`);
-      return response;
+      try {
+        const fs = require('fs').promises;
+        const path = require('path');
+        
+        // Extract file path from URL (remove /raw/ prefix)
+        const filePath = request.params['*'];
+        const fullPath = path.join(process.cwd(), filePath);
+        
+        // Security check: ensure the path is within the project directory
+        const projectRoot = path.resolve(process.cwd());
+        const resolvedPath = path.resolve(fullPath);
+        
+        if (!resolvedPath.startsWith(projectRoot)) {
+          reply.code(403);
+          this.logger.warn({ filePath, resolvedPath }, 'Attempted access outside project directory');
+          return 'Access denied: Path outside project directory';
+        }
+        
+        // Check if file exists
+        try {
+          const stats = await fs.stat(resolvedPath);
+          if (!stats.isFile()) {
+            reply.code(404);
+            return 'Not found: Path is not a file';
+          }
+        } catch (error) {
+          reply.code(404);
+          return 'File not found';
+        }
+        
+        // Read and serve the file
+        const fileContent = await fs.readFile(resolvedPath, 'utf8');
+        const ext = path.extname(resolvedPath).toLowerCase();
+        
+        // Set appropriate content type based on file extension
+        switch (ext) {
+          case '.json':
+            reply.type('application/json');
+            break;
+          case '.md':
+            reply.type('text/markdown');
+            break;
+          case '.js':
+            reply.type('text/javascript');
+            break;
+          case '.yml':
+          case '.yaml':
+            reply.type('text/yaml');
+            break;
+          case '.txt':
+            reply.type('text/plain');
+            break;
+          default:
+            reply.type('text/plain');
+        }
+        
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
+          `← [${correlationId}] 200 ${request.method} ${request.url}`);
+        return fileContent;
+        
+      } catch (error) {
+        this.logger.error({ error: error.message, filePath: request.params['*'] }, 'Failed to serve raw file');
+        reply.code(500);
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, 500),
+          `← [${correlationId}] 500 ${request.method} ${request.url}`);
+        return 'Error: Could not load file';
+      }
     });
     
     // Health check endpoint
@@ -1222,6 +1211,18 @@ class MockServer {
       this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
         `← [${correlationId}] 200 ${request.method} ${request.url}`);
       return response;
+    });
+
+    // Debug endpoint to check schema loading
+    server.get('/debug/schemas', async (request, reply) => {
+      return {
+        configManagerExists: !!this.configManager,
+        wsSchemaLoaded: !!this.configManager?.wsSchema,
+        apiSchemaLoaded: !!this.configManager?.apiSchema,
+        wsSchemaTitle: this.configManager?.wsSchema?.title || 'Not loaded',
+        apiSchemaTitle: this.configManager?.apiSchema?.title || 'Not loaded',
+        configManagerKeys: this.configManager ? Object.keys(this.configManager).filter(k => k.includes('schema') || k.includes('Schema')) : []
+      };
     });
 
     // Status endpoint showing all loaded mocks
@@ -1264,57 +1265,34 @@ class MockServer {
 
     // Schema endpoints
     server.get('/schema/ws', async (request, reply) => {
-      if (!this.configManager.wsSchema || !this.configManager.baseSchema) {
+      // Debug logging
+      this.logger.debug({
+        hasConfigManager: !!this.configManager,
+        hasWsSchema: !!this.configManager?.wsSchema,
+        schemaKeys: this.configManager ? Object.keys(this.configManager) : []
+      }, 'Schema endpoint accessed');
+      
+      if (!this.configManager.wsSchema) {
         return {
           error: 'WebSocket schema not loaded',
           message: 'Please ensure the schema files are properly loaded'
         };
       }
       
-      // Merge base schema properties with WebSocket schema
-      const completeSchema = {
-        ...this.configManager.wsSchema,
-        properties: {
-          name: this.configManager.baseSchema.properties.name,
-          type: {
-            ...this.configManager.baseSchema.properties.type,
-            enum: ['ws'],
-            description: 'Type must be "ws" for WebSocket mock'
-          },
-          description: this.configManager.baseSchema.properties.description,
-          ...this.configManager.wsSchema.properties
-        },
-        required: ['name', 'type']
-      };
-      
-      return completeSchema;
+      // Return the WebSocket schema directly (it already contains all properties)
+      return this.configManager.wsSchema;
     });
 
     server.get('/schema/api', async (request, reply) => {
-      if (!this.configManager.apiSchema || !this.configManager.baseSchema) {
+      if (!this.configManager.apiSchema) {
         return {
           error: 'API schema not loaded',
           message: 'Please ensure the schema files are properly loaded'
         };
       }
       
-      // Merge base schema properties with API schema
-      const completeSchema = {
-        ...this.configManager.apiSchema,
-        properties: {
-          name: this.configManager.baseSchema.properties.name,
-          type: {
-            ...this.configManager.baseSchema.properties.type,
-            enum: ['api'],
-            description: 'Type must be "api" for API mock'
-          },
-          description: this.configManager.baseSchema.properties.description,
-          ...this.configManager.apiSchema.properties
-        },
-        required: ['name', 'type']
-      };
-      
-      return completeSchema;
+      // Return the API schema directly (it already contains all properties)
+      return this.configManager.apiSchema;
     });
 
     // Status code test endpoints
@@ -1641,6 +1619,122 @@ class MockServer {
       this.schedulerService.clearHistory();
       this.logger.info('Cleared message and scheduler history');
     }
+  }
+
+  /**
+   * Generate README template data for EJS rendering
+   */
+  async generateReadmeTemplateData(request) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    const { marked } = require('marked');
+
+    // Read README.md
+    const readmePath = path.join(process.cwd(), 'README.md');
+    let readmeContent = await fs.readFile(readmePath, 'utf8');
+
+    // Get host info for links
+    const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
+    const host = request.headers.host || 'localhost:8080';
+    const baseUrl = `${protocol}://${host}`;
+
+    // Create compact version of original TOC structure
+    const compactTOC = `## Table of Contents
+
+- [Quick Start](#quick-start)
+  - [Local Development](#local-development), [Docker Compose](#docker-compose), [Standalone Docker](#standalone-docker)
+- [Features](#features)
+- [How to create mocks?](#how-to-create-mocks)
+  - [WebSocket](#websocket): [Schema](#websocket-schema), [Matchers](#matchers) (Exact, Contains, Regex, JSONPath)
+  - [REST API](#rest-api): [Schema](#rest-api-schema), [Request Matching](#request-matching-rules), [Response Options](#response-options)
+  - [X-Mock-Scenario Header](#x-mock-scenario-header): Performance, Auth, Data, Error scenarios
+  - [Template Variables](#template-variables)
+- [API Reference](#api-reference)
+  - [Built-in Endpoints](#built-in-endpoints)
+- [Development](#development)
+  - [Mock Examples](#mock-examples), [Commands](#commands), [Environment Variables](#environment-variables), [Priority System](#priority-system), [Diagnostic Logging](#diagnostic-logging)`;
+
+    const tocRegex = /## Table of Contents[\s\S]*?(?=##[^#])/;
+    readmeContent = readmeContent.replace(tocRegex, compactTOC + '\n\n');
+    
+    readmeContent = this.transformMarkdownLinks(readmeContent, baseUrl);
+
+    // Configure marked with custom renderer for header IDs
+    const renderer = new marked.Renderer();
+    renderer.heading = function(text, level, raw) {
+      // Handle both string and object types from modern marked
+      const textContent = typeof text === 'string' ? text : (text.raw || text.text || String(text));
+      const headingLevel = level || 2; // Default to h2 if level is undefined
+      const escapedText = textContent.toLowerCase()
+        .replace(/[^\w\-\s]/g, '')  // Remove special characters
+        .replace(/\s+/g, '-')       // Replace spaces with hyphens
+        .replace(/^\-+|\-+$/g, ''); // Remove leading/trailing hyphens
+      return `<h${headingLevel} id="${escapedText}">${textContent}</h${headingLevel}>`;
+    };
+
+    // Configure marked options
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      renderer: renderer
+    });
+
+    // Convert to HTML
+    const htmlContent = marked.parse(readmeContent);
+
+    // Return template data for EJS rendering
+    return {
+      content: htmlContent,
+      host: host
+    };
+  }
+
+  /**
+   * Transform markdown links for proper browser navigation
+   */
+  transformMarkdownLinks(content, baseUrl) {
+    return content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+      // Skip absolute URLs
+      if (url.match(/^(https?|wss?):\/\//)) {
+        return match;
+      }
+
+      // Skip internal anchors
+      if (url.startsWith('#')) {
+        return match;
+      }
+
+      // Check if this is a file link (has file extension)
+      const isFile = /\.(json|md|js|yml|yaml|txt|css|html|xml|csv|log)$/i.test(url);
+      
+      // Check if this is a folder link (ends with / or is a known folder)
+      const isFolder = url.endsWith('/') || 
+                      url === './mocks' || 
+                      url.match(/^\.\/[^.]*$/) ||  // ./folder-name without extension
+                      url.match(/^[^.]*\/$/) ||    // folder-name/
+                      (!isFile && !url.includes('.')); // No extension and no dot = likely folder
+
+      // Skip folder links entirely - don't transform them
+      if (isFolder) {
+        return `[${text}](#)`;  // Convert to harmless anchor or remove entirely
+      }
+
+      // Convert file paths to /raw/ URLs only
+      if (url.startsWith('./')) {
+        const cleanUrl = url.substring(2);
+        return `[${text}](${baseUrl}/raw/${cleanUrl})`;
+      } else if (url.startsWith('/')) {
+        return `[${text}](${baseUrl}/raw${url})`;
+      }
+
+      // Other relative file paths
+      if (isFile) {
+        return `[${text}](${baseUrl}/raw/${url})`;
+      }
+
+      // For anything else unclear, don't transform
+      return match;
+    });
   }
 }
 

@@ -13,6 +13,9 @@ RUN yarn install --frozen-lockfile --production && yarn cache clean
 # Copy application source
 COPY src/ ./src/
 COPY schema/ ./schema/
+COPY templates/ ./templates/
+COPY public/ ./public/
+COPY README.md ./
 
 # Create directory for mock configurations
 RUN mkdir -p /app/mocks && \
@@ -34,12 +37,11 @@ USER nodejs
 # Expose default port range for WebSocket servers
 EXPOSE 8080-8090
 
-# Health check
+# Health check - test the actual health endpoint
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "console.log('Health check passed')" || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Set environment variables
-ENV NODE_ENV=production
 ENV CONFIG_DIR=mocks
 
 # Start the application
