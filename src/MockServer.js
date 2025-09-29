@@ -448,8 +448,8 @@ class MockServer {
    */
   registerWebSocketHandlers(server, config) {
     server.register(async (fastify) => {
-      fastify.get('/ws', { websocket: true }, (connection, req) => {
-        this.handleNewConnection(connection, req, config);
+      fastify.get('/ws', { websocket: true }, (socket, req) => {
+        this.handleNewConnection(socket, req, config);
       });
     });
   }
@@ -1338,17 +1338,52 @@ class MockServer {
       }
     });
 
+    // Reload configurations endpoint
+    server.get('/reload', async (request, reply) => {
+      const correlationId = generateCorrelationId();
+      this.logger.info(createRequestLog(request.method, request.url, correlationId),
+        `→ [${correlationId}] ${request.method} ${request.url}`);
+
+      try {
+        const result = await this.reloadAllConfigurations();
+
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, 200),
+          `← [${correlationId}] 200 ${request.method} ${request.url}`);
+
+        return {
+          status: 'success',
+          message: 'Configurations reloaded successfully',
+          summary: result.summary,
+          configurations: {
+            ws: Object.keys(this.loadedMocks.ws),
+            api: Object.keys(this.loadedMocks.api)
+          }
+        };
+      } catch (error) {
+        this.logger.error({ error: error.message }, 'Failed to reload configurations');
+
+        this.logger.info(createResponseLog(request.method, request.url, correlationId, 500),
+          `← [${correlationId}] 500 ${request.method} ${request.url}`);
+
+        return reply.code(500).send({
+          status: 'error',
+          message: 'Failed to reload configurations',
+          error: error.message
+        });
+      }
+    });
+
   }
 
   /**
    * Handle new WebSocket connection
-   * @param {Object} connection - WebSocket connection
+   * @param {Object} socket - WebSocket socket object from Fastify
    * @param {Object} req - HTTP request
    * @param {Object} config - Server configuration
    */
-  handleNewConnection(connection, req, config) {
+  handleNewConnection(socket, req, config) {
     // Register connection
-    const connectionId = this.connectionManager.addConnection(connection, config, {
+    const connectionId = this.connectionManager.addConnection(socket, config, {
       headers: req.headers,
       query: req.query,
       ip: req.ip
@@ -1373,7 +1408,7 @@ class MockServer {
     }
 
     // Handle incoming messages
-    connection.socket.on('message', async (rawMessage) => {
+    socket.on('message', async (rawMessage) => {
       try {
         this.connectionManager.recordMessageReceived(connectionId);
         
@@ -1419,13 +1454,13 @@ class MockServer {
     });
 
     // Handle disconnection
-    connection.socket.on('close', () => {
+    socket.on('close', () => {
       this.connectionManager.removeConnection(connectionId);
       this.messageHandler.clearHistory(connectionId);
     });
 
     // Handle errors
-    connection.socket.on('error', (error) => {
+    socket.on('error', (error) => {
       this.logger.error({
         connectionId,
         error: error.message
@@ -1629,6 +1664,121 @@ class MockServer {
       this.messageHandler.clearHistory();
       this.schedulerService.clearHistory();
       this.logger.info('Cleared message and scheduler history');
+    }
+  }
+
+  /**
+   * Reload all configurations from disk
+   * @returns {Object} Reload results with summary
+   */
+  async reloadAllConfigurations() {
+    this.logger.info('Starting configuration reload...');
+
+    try {
+      // Step 1: Stop all scheduled messages
+      this.logger.info('Stopping all scheduled messages...');
+      this.schedulerService.stopAll();
+
+      // Step 2: Clear current configurations (but keep connections alive)
+      this.logger.info('Clearing current configurations...');
+      this.configManager.configs.clear();
+      this.loadedMocks.ws = {};
+      this.loadedMocks.api = {};
+      this.failedMocks.ws = {};
+      this.failedMocks.api = {};
+
+      // Clear API mappings for re-registration
+      this.apiMappings = [];
+      this.registeredApiRoutes.clear();
+
+      // Step 3: Reload configurations from disk (reuse same logic as initialize)
+      this.logger.info('Reloading configurations from disk...');
+      const loadResults = await this.configManager.loadConfigurations('mocks', {
+        stopOnError: false,
+        validateOnly: false
+      });
+
+      // Check if any configurations were loaded (same logic as initialize)
+      if (loadResults.summary.loaded === 0) {
+        if (loadResults.summary.total === 0) {
+          this.logger.warn('No configuration files found in the mocks directory');
+        } else {
+          this.logger.error(`All ${loadResults.summary.total} configuration files failed validation`);
+        }
+      }
+
+      // Step 4: Organize loaded mocks by type (same as initialize)
+      this.organizeMocksByType(loadResults.configurations);
+
+      // Organize failed mocks (same as initialize)
+      if (loadResults.summary.errors && loadResults.summary.errors.length > 0) {
+        this.organizeFailedMocks(loadResults.summary.errors);
+      }
+
+      // Step 5: Re-process API mappings using the same logic as registerApiHandlers
+      const configs = this.configManager.getAllConfigurations();
+      for (const config of configs) {
+        if (config.type === 'api' && config.mappings) {
+          config.mappings.forEach((mapping, index) => {
+            if (mapping.enabled !== false) { // Default to enabled
+              const method = (mapping.request.method || 'GET').toUpperCase();
+              const path = mapping.request.urlPath || mapping.request.urlPathPattern;
+
+              if (!path) {
+                this.logger.warn({
+                  config: config.name,
+                  mappingIndex: index
+                }, 'API mapping missing URL path');
+                return;
+              }
+
+              // Store mapping with config info and priority (same as registerApiHandlers)
+              const enrichedMapping = {
+                ...mapping,
+                _configName: config.name,
+                _configLocation: config._location || config.name,
+                _mappingIndex: index,
+                _priority: this.calculateMappingPriority(mapping)
+              };
+
+              // Optimize the mapping for fast matching
+              const optimizedMapping = optimizeMapping(enrichedMapping);
+
+              // Add to global mappings list
+              this.apiMappings.push(optimizedMapping);
+            }
+          });
+        }
+      }
+
+      // Sort API mappings by priority after all are registered (same as startAll)
+      this.sortApiMappingsByPriority();
+
+      // Step 6: Restart scheduled messages for WebSocket configs (same as startAll)
+      this.logger.info('Restarting scheduled messages...');
+      configs.filter(c => c.type === 'ws').forEach(config => {
+        this.schedulerService.startScheduledMessages(config, (configName, message, options) => {
+          return this.connectionManager.broadcast(configName, message, options);
+        });
+      });
+
+      // Step 7: Update connection handlers with new configurations
+      // Note: Existing WebSocket connections will use the new rules automatically
+      // since they reference the config by name through connectionManager
+
+      this.logger.info({
+        loaded: loadResults.summary.loaded,
+        failed: loadResults.summary.failed,
+        wsConfigs: configs.filter(c => c.type === 'ws').length,
+        apiConfigs: configs.filter(c => c.type === 'api').length,
+        activeMappings: this.apiMappings.length
+      }, 'Configuration reload completed');
+
+      return loadResults;
+
+    } catch (error) {
+      this.logger.error({ error: error.message }, 'Failed to reload configurations');
+      throw error;
     }
   }
 

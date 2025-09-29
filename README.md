@@ -119,7 +119,7 @@ docker run -v $(pwd)/mocks:/app/mocks -p 8080:8080 mock-server
 - **Priority-based routing** - Exact paths > patterns > wildcards
 - **Scenario testing** - Use X-Mock-Scenario header for different responses
 - **Template variables** - Dynamic timestamps, random values, request data
-- **Hot reload** - Auto-reload on config changes (dev mode)
+- **Hot reload** - Call GET /reload endpoint to reload configurations without restart
 - **Diagnostic logging** - Comprehensive request/response logging with correlation IDs
 
 ## How to create mocks?
@@ -1291,6 +1291,7 @@ curl -H "X-API-Key: invalid" -H "X-Mock-Scenario: invalid-auth-apikey-x-api-key,
 | `GET /status/:code` | Test endpoint - Returns any HTTP status code (100-599) |
 | `GET /timeout/:seconds` | Test endpoint - Delays response by specified seconds (0-60) |
 | `GET /debug/schemas` | Debug endpoint - Shows schema loading status |
+| `GET /reload` | **Hot reload endpoint** - Reloads all mock configurations from disk without restarting:<br>• Stops scheduled messages<br>• Reloads all JSON files from mocks/ directory<br>• Re-validates configurations<br>• Restarts scheduled messages<br>• Keeps WebSocket connections alive<br>Returns summary of loaded/failed configurations |
 
 ## Development
 

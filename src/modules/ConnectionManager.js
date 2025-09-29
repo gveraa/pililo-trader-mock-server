@@ -11,23 +11,23 @@ class ConnectionManager extends EventEmitter {
 
   /**
    * Register a new WebSocket connection
-   * @param {Object} connection - WebSocket connection object
+   * @param {Object} socket - WebSocket socket object from Fastify
    * @param {Object} config - Configuration for this connection
    * @param {Object} metadata - Additional connection metadata
    * @returns {string} Connection ID
    */
-  addConnection(connection, config, metadata = {}) {
+  addConnection(socket, config, metadata = {}) {
     const connectionId = this.generateConnectionId(config.name);
-    
+
     const connectionInfo = {
       id: connectionId,
-      socket: connection.socket,
+      socket: socket,
       config: config,
       connectedAt: new Date(),
       lastActivity: new Date(),
       metadata: {
         ...metadata,
-        remoteAddress: connection.socket._socket?.remoteAddress || 'unknown',
+        remoteAddress: socket._socket?.remoteAddress || 'unknown',
         userAgent: metadata.headers?.['user-agent'] || 'unknown'
       },
       messageCount: {
@@ -60,7 +60,7 @@ class ConnectionManager extends EventEmitter {
       }, 'Connection limit exceeded');
       
       // Optionally close the connection
-      connection.socket.close(1008, 'Connection limit exceeded');
+      socket.close(1008, 'Connection limit exceeded');
       this.removeConnection(connectionId);
       return null;
     }
