@@ -1,0 +1,90 @@
+{
+  "name": "test-websocket-mock",
+  "type": "ws",
+  "description": "Test WebSocket mock configuration",
+  "connectionBehavior": {
+    "onConnect": {
+      "message": {
+        "type": "welcome",
+        "message": "Connected to test server",
+        "connectionId": "{{connection.id}}"
+      },
+      "delay": 100
+    },
+    "maxConnections": 10
+  },
+  "scheduledMessages": [
+    {
+      "id": "test-heartbeat",
+      "interval": 5000,
+      "message": {
+        "type": "heartbeat",
+        "timestamp": "{{timestamp.iso}}"
+      }
+    },
+    {
+      "id": "test-data-feed",
+      "interval": 1000,
+      "message": {
+        "type": "data",
+        "value": "{{random.number(1,100)}}",
+        "timestamp": "{{timestamp.iso}}"
+      }
+    }
+  ],
+  "responseRules": [
+    {
+      "id": "echo-test",
+      "matcher": {
+        "type": "contains",
+        "value": "echo"
+      },
+      "response": {
+        "message": {
+          "type": "echo",
+          "originalMessage": "{{message}}",
+          "timestamp": "{{timestamp.iso}}"
+        }
+      }
+    },
+    {
+      "id": "ping-pong",
+      "matcher": {
+        "type": "exact",
+        "value": "ping"
+      },
+      "response": {
+        "message": "pong"
+      }
+    },
+    {
+      "id": "json-path-test",
+      "matcher": {
+        "type": "jsonPath",
+        "path": "$.action",
+        "value": "subscribe"
+      },
+      "response": {
+        "message": {
+          "type": "subscription_confirmed",
+          "channel": "{{message.channel}}",
+          "timestamp": "{{timestamp.iso}}"
+        }
+      }
+    },
+    {
+      "id": "regex-test",
+      "matcher": {
+        "type": "regex",
+        "pattern": "^command:(.+)$"
+      },
+      "response": {
+        "message": {
+          "type": "command_response",
+          "command": "{{match.[1]}}",
+          "result": "executed"
+        }
+      }
+    }
+  ]
+}

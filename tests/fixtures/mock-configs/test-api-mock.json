@@ -1,0 +1,89 @@
+{
+  "name": "test-api-mock",
+  "type": "api",
+  "description": "Test API mock configuration",
+  "mappings": [
+    {
+      "id": "test-get-user",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/users/123"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "id": "123",
+          "name": "Test User",
+          "email": "test@example.com"
+        }
+      }
+    },
+    {
+      "id": "test-post-user",
+      "request": {
+        "method": "POST",
+        "urlPath": "/api/users",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "id": "{{random.uuid}}",
+          "name": "{{request.body.name}}",
+          "email": "{{request.body.email}}",
+          "createdAt": "{{timestamp.iso}}"
+        }
+      }
+    },
+    {
+      "id": "test-pattern-match",
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/api/products/([0-9]+)"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "productId": "{{request.path.[1]}}",
+          "name": "Product {{request.path.[1]}}"
+        }
+      }
+    },
+    {
+      "id": "test-scenario-based",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/status"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "status": "ok"
+        }
+      },
+      "allowedScenarios": ["success", "normal"]
+    },
+    {
+      "id": "test-error-scenario",
+      "request": {
+        "method": "GET",
+        "urlPath": "/api/status"
+      },
+      "response": {
+        "status": 500,
+        "body": {
+          "error": "Internal Server Error"
+        }
+      },
+      "allowedScenarios": ["error", "failure"]
+    }
+  ]
+}
