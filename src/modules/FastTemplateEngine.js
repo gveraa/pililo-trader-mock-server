@@ -12,13 +12,15 @@ const crypto = require('crypto');
 
 // Pre-compiled regex patterns
 const TEMPLATE_PATTERNS = {
-  timestamp: /\{\{timestamp\}\}/,
-  request: /\{\{request\.(\w+)\}\}/,
-  connection: /\{\{connection\.(\w+)\}\}/,
-  randomUuid: /\{\{random\.uuid\}\}/,
-  randomNumber: /\{\{random\.number\((\d+),(\d+)\)\}\}/,
-  dateNow: /\{\{date\.now\}\}/,
-  dateFormat: /\{\{date\.format\(([^)]+)\)\}\}/
+  timestamp: /\{\{timestamp\}\}/g,
+  uuid: /\{\{uuid\}\}/g,
+  request: /\{\{request\.([.\w]+)\}\}/g,
+  message: /\{\{message\.([.\w]+)\}\}/g,
+  connection: /\{\{connection\.([.\w]+)\}\}/g,
+  randomUuid: /\{\{random\.uuid\}\}/g,
+  randomNumber: /\{\{random\.number\((\d+),(\d+)\)\}\}/g,
+  dateNow: /\{\{date\.now\}\}/g,
+  dateFormat: /\{\{date\.format\(([^)]+)\)\}\}/g
 };
 
 // Check if string contains any template
@@ -73,6 +75,14 @@ class FastTemplateEngine {
       return str;
     }
 
+    // Special case: if the string is ONLY a number template, return as number
+    const numberOnlyMatch = str.match(/^\{\{random\.number\((\d+),(\d+)\)\}\}$/);
+    if (numberOnlyMatch) {
+      const min = parseInt(numberOnlyMatch[1]);
+      const max = parseInt(numberOnlyMatch[2]);
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
     let result = str;
 
     // Process templates in order of frequency
@@ -80,16 +90,27 @@ class FastTemplateEngine {
       result = result.replace(TEMPLATE_PATTERNS.timestamp, new Date().toISOString());
     }
 
+    if (TEMPLATE_PATTERNS.uuid.test(result)) {
+      result = result.replace(TEMPLATE_PATTERNS.uuid, this.generateUUID());
+    }
+
     if (context.request && TEMPLATE_PATTERNS.request.test(result)) {
       result = result.replace(TEMPLATE_PATTERNS.request, (match, field) => {
-        const value = context.request[field];
+        const value = this.getNestedValue(context.request, field);
+        return value !== undefined ? String(value) : match;
+      });
+    }
+
+    if (context.request && TEMPLATE_PATTERNS.message.test(result)) {
+      result = result.replace(TEMPLATE_PATTERNS.message, (match, field) => {
+        const value = this.getNestedValue(context.request, field);
         return value !== undefined ? String(value) : match;
       });
     }
 
     if (context.connection && TEMPLATE_PATTERNS.connection.test(result)) {
       result = result.replace(TEMPLATE_PATTERNS.connection, (match, field) => {
-        const value = context.connection[field];
+        const value = this.getNestedValue(context.connection, field);
         return value !== undefined ? String(value) : match;
       });
     }
@@ -102,7 +123,10 @@ class FastTemplateEngine {
       result = result.replace(TEMPLATE_PATTERNS.randomUuid, this.generateUUID());
     }
 
+    // Reset regex state before testing (global flag makes test() stateful)
+    TEMPLATE_PATTERNS.randomNumber.lastIndex = 0;
     if (TEMPLATE_PATTERNS.randomNumber.test(result)) {
+      TEMPLATE_PATTERNS.randomNumber.lastIndex = 0;
       result = result.replace(TEMPLATE_PATTERNS.randomNumber, (match, min, max) => {
         const minNum = parseInt(min);
         const maxNum = parseInt(max);
@@ -143,6 +167,24 @@ class FastTemplateEngine {
     }
     
     return processed;
+  }
+
+  /**
+   * Get nested value from object using dot notation
+   */
+  getNestedValue(obj, path) {
+    const parts = path.split('.');
+    let current = obj;
+
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return undefined;
+      }
+    }
+
+    return current;
   }
 
   /**
