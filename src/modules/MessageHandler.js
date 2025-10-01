@@ -45,7 +45,7 @@ class MessageHandler extends EventEmitter {
       
       if (config.responseRules && config.responseRules.length > 0) {
         for (const rule of config.responseRules) {
-          if (!rule.enabled) continue;
+          if (rule.enabled === false) continue;
 
           const matchResult = await this.evaluateRule(parsed, rule, connectionId);
           

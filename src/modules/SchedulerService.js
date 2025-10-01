@@ -22,7 +22,7 @@ class SchedulerService extends EventEmitter {
     }
 
     config.scheduledMessages.forEach(scheduledMsg => {
-      if (!scheduledMsg.enabled) {
+      if (scheduledMsg.enabled === false) {
         this.logger.debug({
           configName: config.name,
           messageId: scheduledMsg.id
