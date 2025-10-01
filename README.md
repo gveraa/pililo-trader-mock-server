@@ -1270,12 +1270,107 @@ curl -H "X-API-Key: invalid" -H "X-Mock-Scenario: invalid-auth-apikey-x-api-key,
 
 ### Template Variables
 
-| Variable | Description |
-|----------|-------------|
-| `{{timestamp}}` | ISO timestamp |
-| `{{random.number(min,max)}}` | Random number |
-| `{{random.uuid}}` | Random UUID |
-| `{{request.field}}` | Request data |
+Template variables allow dynamic values in mock responses. They are processed when the response is sent.
+
+#### Date & Time Templates
+
+| Template | Description | Example Output |
+|----------|-------------|----------------|
+| `{{timestamp}}` | Current ISO 8601 timestamp | `2025-10-01T13:45:30.123Z` |
+| `{{date.now}}` | Current Unix timestamp (milliseconds) | `1727789130123` |
+| `{{date.format(pattern)}}` | Custom formatted date | `{{date.format('YYYY-MM-DD')}}` → `2025-10-01` |
+
+**Supported date format patterns:**
+- `YYYY` - 4-digit year
+- `MM` - 2-digit month (01-12)
+- `DD` - 2-digit day (01-31)
+- `HH` - 2-digit hours (00-23)
+- `mm` - 2-digit minutes (00-59)
+- `ss` - 2-digit seconds (00-59)
+
+#### Random Value Templates
+
+| Template | Description | Example Output | Type |
+|----------|-------------|----------------|------|
+| `{{random.uuid}}` | Random UUID v4 | `550e8400-e29b-41d4-a716-446655440000` | string |
+| `{{random.number(min,max)}}` | Random integer between min and max (inclusive) | `{{random.number(1000,9999)}}` → `5432` | number* |
+
+**\*Number Type Behavior:**
+- When used alone: Returns as number type → `{"port": "{{random.number(8000,9000)}}"} → {"port": 8080}`
+- When embedded in string: Returns as string → `{"id": "user-{{random.number(1,999)}}"} → {"id": "user-42"}`
+
+#### Request/Message Data Templates
+
+Access data from incoming requests or WebSocket messages using dot notation:
+
+| Template | Description | Example |
+|----------|-------------|---------|
+| `{{request.field}}` | Top-level request property | `{{request.symbol}}` → `"BTC/USD"` |
+| `{{request.body.field}}` | Nested request body property | `{{request.body.email}}` → `"user@example.com"` |
+| `{{request.query.field}}` | Query parameter | `{{request.query.limit}}` → `"10"` |
+| `{{request.params[0]}}` | URL parameter by index | `{{request.params[0]}}` → `"123"` |
+| `{{message.field}}` | WebSocket message property | `{{message.topic}}` → `"market.BTC/USD"` |
+
+**Nested property access:**
+```json
+{
+  "type": "order_response",
+  "symbol": "{{request.body.symbol}}",
+  "price": "{{request.body.price}}",
+  "user_email": "{{request.body.user.email}}"
+}
+```
+
+#### Connection Data Templates
+
+Access WebSocket connection metadata:
+
+| Template | Description | Example |
+|----------|-------------|---------|
+| `{{connection.id}}` | Connection identifier | `ws-connection-123` |
+| `{{connection.ip}}` | Client IP address | `192.168.1.100` |
+| `{{connection.connectedAt}}` | Connection timestamp | ISO timestamp |
+
+#### Examples
+
+**REST API Response:**
+```json
+{
+  "response": {
+    "status": 201,
+    "jsonBody": {
+      "order_id": "{{random.uuid}}",
+      "symbol": "{{request.body.symbol}}",
+      "quantity": "{{request.body.quantity}}",
+      "price": "{{random.number(40000,50000)}}",
+      "timestamp": "{{timestamp}}"
+    }
+  }
+}
+```
+
+**WebSocket Response:**
+```json
+{
+  "response": {
+    "message": {
+      "type": "subscribed",
+      "topic": "{{message.topic}}",
+      "subscription_id": "{{random.uuid}}",
+      "timestamp": "{{timestamp}}"
+    }
+  }
+}
+```
+
+**Number Type Example:**
+```json
+{
+  "port": "{{random.number(8000,9000)}}",         // Returns: 8080 (number)
+  "id": "server-{{random.number(1,99)}}",         // Returns: "server-42" (string)
+  "count": "{{random.number(100,999)}}"           // Returns: 456 (number)
+}
+```
 
 ## API Reference
 

@@ -13,7 +13,6 @@ const crypto = require('crypto');
 // Pre-compiled regex patterns
 const TEMPLATE_PATTERNS = {
   timestamp: /\{\{timestamp\}\}/g,
-  uuid: /\{\{uuid\}\}/g,
   request: /\{\{request\.([.\w]+)\}\}/g,
   message: /\{\{message\.([.\w]+)\}\}/g,
   connection: /\{\{connection\.([.\w]+)\}\}/g,
@@ -88,10 +87,6 @@ class FastTemplateEngine {
     // Process templates in order of frequency
     if (TEMPLATE_PATTERNS.timestamp.test(result)) {
       result = result.replace(TEMPLATE_PATTERNS.timestamp, new Date().toISOString());
-    }
-
-    if (TEMPLATE_PATTERNS.uuid.test(result)) {
-      result = result.replace(TEMPLATE_PATTERNS.uuid, this.generateUUID());
     }
 
     if (context.request && TEMPLATE_PATTERNS.request.test(result)) {
