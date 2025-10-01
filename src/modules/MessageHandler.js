@@ -68,7 +68,7 @@ class MessageHandler extends EventEmitter {
 
             // Schedule response if needed
             if (rule.response) {
-              this.scheduleResponse(connectionId, rule, parsed, connectionInfo);
+              this.scheduleResponse(connectionId, rule, parsed, connectionInfo, correlationId);
             }
 
             // Stop processing if rule doesn't allow multiple matches
@@ -335,8 +335,9 @@ class MessageHandler extends EventEmitter {
    * @param {Object} rule - Rule that matched
    * @param {any} originalMessage - Original incoming message
    * @param {Object} connectionInfo - Connection information
+   * @param {string} correlationId - Correlation ID for this message
    */
-  scheduleResponse(connectionId, rule, originalMessage, connectionInfo) {
+  scheduleResponse(connectionId, rule, originalMessage, connectionInfo, correlationId) {
     const delay = rule.response.delay || 0;
     
     setTimeout(() => {
